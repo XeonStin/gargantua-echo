@@ -82,6 +82,7 @@ export class Guide {
 
   start() {
     this._build();
+    if (this.active) { this.idx = 0; this._show(0); return; } // 重入:回到第一步,不重复挂监听
     this.active = true;
     this.idx = 0;
     this.root.classList.add('on');

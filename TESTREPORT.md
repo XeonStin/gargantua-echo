@@ -497,3 +497,22 @@ API `startGuide()`;`?guide=0` 显式禁止。自动化豁免:still/snap/webdrive
 | 生命周期 | 完成 → 关闭 + flag=1;面板「引导」→ 重开;Esc → 关闭(capture 相位拦截,不误开面板);跳过按钮 ✓ |
 | 零错误 | 全流程 err=0;canvas 截图不受 DOM 覆盖层影响(确定性口径不变) |
 | 首访自动弹 | rAF 在 IAB 长期挂起、onFirstFrame 不可达,真机路径未在此环境观测;豁免条件与 flag 逻辑经代码复核 + flag 读写实测 |
+
+## 19. 十五轮:代码审查(引导模块 + 全模块快扫)(2026-11-05)
+
+### 修复
+1. **guide.start() 重入(P2)**:引导开着时再点「引导」/ API 会二次挂 resize+keydown 监听,
+   之后按一次 → 跳两步。修复:重入回到第一步且不重复挂监听。
+   验证:双 startGuide + 单次 ArrowRight → 恰为 2/6(修复前为 3/6)。
+
+### 复核为安全的项
+- audio.js(并发 enable 共享加载/失败回滚)、achievements.js(坏存档忽略/id 校验)、
+  post.js(EHT 13-tap 仅开启时)、cinematic.js(负 t 取模/FOV 死区)、photomode.js、
+  flight/geodesic(geodesic 有 dispose + aspect 守卫;flight 为页生命周期单例无泄漏面)、
+  guide 全部事件监听均在 done() 成对移除。
+- standard 档 canonical 哈希 a75252fd 保持(本轮零着色器改动)。
+
+### 性能口径(诚实)
+桌面 2K 默认路径 4.49ms(预算 8.33ms 的 54% 余量),低档单像素成本较标准档 −60% 累计;
+经九~十四轮后着色器/管线已无"安全且有可观收益"的剩余项——近期实测在环境噪声(±30%)之下的
+改动一律不采纳(hhStep 门控 −2.7% 属原理性清理保留)。CPU 侧主循环分配已归零(十四轮)。
