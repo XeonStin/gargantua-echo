@@ -1,0 +1,11 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local Windows shortcut to the dev server
+访问.url
+
+# Python cache
+__pycache__/
+*.pyc

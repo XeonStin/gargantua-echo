@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>GARGANTUA — Schwarzschild Black Hole Raytracer</title>
+<meta name="description" content="全屏 Fragment Shader 实时积分 Schwarzschild 零测地线的交互式黑洞渲染器">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23ffb347' stroke-width='1.6'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%23000'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="gl" aria-label="GARGANTUA 黑洞渲染画布"></canvas>
+
+<!-- ======================= HUD ======================= -->
+<div id="hud">
+  <div id="hud-tl" class="hud-card">
+    <div class="title-row">
+      <span class="bh-mark" aria-hidden="true"></span>
+      <div>
+        <h1>GARGANTUA</h1>
+        <p class="subtitle">Schwarzschild Black Hole Raytracer</p>
+      </div>
+    </div>
+    <div id="stat-line" class="stat-line">初始化中…</div>
+  </div>
+
+  <div id="hud-tr">
+    <div class="preset-group" role="group" aria-label="视角预设">
+      <button class="btn preset-btn" data-preset="0" title="视角预设 1 · 远景全景 (Shift+1)">远景</button>
+      <button class="btn preset-btn" data-preset="1" title="视角预设 2 · 赤道临界 (Shift+2)">赤道</button>
+      <button class="btn preset-btn" data-preset="2" title="视角预设 3 · 极区俯瞰 (Shift+3)">极区</button>
+      <button class="btn preset-btn" data-preset="3" title="视角预设 4 · 近界掠行 (Shift+4)">掠行</button>
+    </div>
+    <div class="tool-group">
+      <button class="btn" id="btn-cine" title="电影镜头循环 (Space)">▶ 循环</button>
+      <button class="btn" id="btn-fly" title="自由飞行 (G):WASD 移动 · R/F 升降">✈ 飞行</button>
+      <button class="btn" id="btn-tour-hud" title="7 站中文导览 (T)">◎ 导览</button>
+      <button class="btn" id="btn-photo-hud" title="摄影模式:胶片风格 + 构图线 (V)">◉ 摄影</button>
+      <button class="btn" id="btn-music" title="氛围音乐 (M)">♪ 音乐</button>
+      <button class="btn" id="btn-shot" title="保存截图 (S) · 导出分辨率见参数面板">⎙ 截图</button>
+      <select class="btn" id="sel-quality" title="画质档位 (Q 切换)" aria-label="画质档位">
+        <option value="standard">标准</option>
+        <option value="high">高</option>
+        <option value="cinematic">电影</option>
+      </select>
+      <button class="btn" id="btn-panel" title="参数面板 (P)">参数</button>
+      <button class="btn btn-icon" id="btn-hud" title="隐藏 HUD (H)">⌄</button>
+    </div>
+  </div>
+
+  <div id="hud-bl" class="hud-card">
+    <div class="legend">
+      <span><b>Space</b> 循环</span><span><b>O/C/G</b> 轨道/镜头/飞行</span><span><b>Shift+1-4</b> 预设</span>
+      <span><b>0-9</b> 调试视图</span><span><b>H</b> HUD</span><span><b>P</b> 面板</span>
+      <span><b>M</b> 音乐</span><span><b>S</b> 截图</span><span><b>V</b> 摄影</span><span><b>T</b> 导览</span>
+      <span><b>E</b> EHT</span><span><b>N</b> 标注</span><span><b>R</b> 复位</span><span><b>F</b> 全屏</span>
+      <span><b>拖拽/滚轮</b> 环绕/缩放</span>
+    </div>
+  </div>
+
+  <div id="hud-br" class="hud-card">
+    <div id="phys-line">—</div>
+  </div>
+</div>
+
+<!-- ======================= 参数面板 ======================= -->
+<aside id="panel" aria-label="参数面板" hidden>
+  <div class="panel-head">
+    <h2>参数 <span class="count">22</span></h2>
+    <button class="btn btn-icon" id="btn-panel-close" title="关闭 (Esc)">✕</button>
+  </div>
+  <div class="panel-tools">
+    <label class="quality-line">画质
+      <select id="sel-quality2">
+        <option value="standard">标准</option>
+        <option value="high">高</option>
+        <option value="cinematic">电影</option>
+      </select>
+    </label>
+    <label class="quality-line">帧率限制
+      <select id="sel-fpscap" title="渲染帧率上限">
+        <option value="0">不限</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+        <option value="90">90</option>
+        <option value="120">120</option>
+        <option value="144">144</option>
+        <option value="165">165</option>
+      </select>
+    </label>
+    <label class="quality-line">导出分辨率
+      <select id="sel-exportsize" title="截图 PNG 的渲染分辨率（4K/8K 为离屏原生重渲染）">
+        <option value="screen">屏幕</option>
+        <option value="4k">4K</option>
+        <option value="8k">8K</option>
+      </select>
+    </label>
+    <label class="quality-line" title="自由飞行安全边界:越贴近视界,时间膨胀越强(2.01M ≈ 14×)">安全边界
+      <input type="range" id="pr-flyboundary" min="2.01" max="3" step="0.01" value="2.7">
+      <span id="pv-flyboundary">2.70</span>
+    </label>
+    <button class="btn" id="btn-reset-params">重置参数</button>
+    <button class="btn" id="btn-reseed">随机星空种子</button>
+    <div class="tool-row2">
+      <button class="btn btn-tgl" id="tgl-voldisk" title="体积吸积盘:薄面穿越 → 体积积分(更厚更真实,帧耗上升)">体积盘</button>
+      <button class="btn btn-tgl" id="tgl-realstars" title="真实星表星空:耶鲁亮星星表 2000+ 颗,运行时只是一次纹理采样">真实星空</button>
+      <button class="btn btn-tgl" id="tgl-anno" title="物理标注:阴影/光子环/ISCO/视界理论位置投影 (N)">标注</button>
+      <button class="btn btn-tgl" id="tgl-eht" title="EHT 视角:模拟事件视界望远镜的有限分辨率 (E)">EHT</button>
+      <button class="btn btn-tgl" id="tgl-film" title="电影色调:胶片 S 曲线 + 暖偏 + 盘面双色带(默认开)">电影色调</button>
+      <button class="btn btn-tgl" id="tgl-refcolor" title="参考配色:内缘白热 + 外缘橙褐(参考项目观感,关闭时用物理黑体+多普勒)">参考配色</button>
+      <button class="btn btn-tgl" id="tgl-watermark" title="导出 PNG 左下角附参数摘要">水印</button>
+      <button class="btn btn-tgl" id="tgl-geo" title="光子弹弓:点击画面发射一圈真实积分的光子轨迹">弹弓</button>
+    </div>
+    <div class="tool-row2">
+      <button class="btn" id="btn-tour" title="7 站中文导览 (T)">导览</button>
+      <button class="btn" id="btn-photo" title="摄影模式:胶片风格 + 构图线 (V)">摄影</button>
+      <button class="btn" id="btn-ach" title="成就图鉴">成就</button>
+      <button class="btn" id="btn-share" title="复制分享链接(含全部参数与相机)">分享</button>
+      <button class="btn" id="btn-import" title="粘贴分享码导入场景">导入</button>
+    </div>
+  </div>
+  <div id="panel-groups"><!-- JS 生成滑杆 --></div>
+  </aside>
+
+  <!-- ======================= 摄影模式 ======================= -->
+  <div id="photo" aria-label="摄影模式">
+    <div id="guides" class="guides"></div>
+    <div class="photo-bar">
+      <span class="photo-title">摄影</span>
+      <span class="photo-group" id="looks">
+        <button class="chip look-chip active" data-look="default">默认</button>
+        <button class="chip look-chip" data-look="imax">IMAX 暖</button>
+        <button class="chip look-chip" data-look="interstellar">星际冷</button>
+        <button class="chip look-chip" data-look="kodak">柯达 5219</button>
+        <button class="chip look-chip" data-look="doc">纪实</button>
+      </span>
+      <span class="photo-group">
+        <button class="chip guide-chip active" data-guide="off">无辅助线</button>
+        <button class="chip guide-chip" data-guide="thirds">三分</button>
+        <button class="chip guide-chip" data-guide="golden">黄金</button>
+        <button class="chip guide-chip" data-guide="cross">十字</button>
+      </span>
+      <span class="photo-group">
+        <button class="chip" id="btn-photo-close">✕ 退出 (V)</button>
+      </span>
+    </div>
+  </div>
+
+  <!-- ======================= 导览字幕 ======================= -->
+  <div id="tour" aria-live="polite">
+    <div class="tour-card">
+      <div class="tour-head">
+        <span id="tour-title">导览</span>
+        <span id="tour-prog">1 / 7</span>
+      </div>
+      <p id="tour-text"></p>
+      <div class="tour-ctrl">
+        <button class="btn" id="tour-prev">‹ 上一站</button>
+        <button class="btn" id="tour-next">下一站 ›</button>
+        <button class="btn" id="tour-exit">退出 (T)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= 成就图鉴 ======================= -->
+  <aside id="ach" aria-label="成就" hidden>
+    <div class="panel-head">
+      <h2>成就 <span class="count" id="ach-count">0 / 13</span></h2>
+      <button class="btn btn-icon" id="btn-ach-close" title="关闭 (Esc)">✕</button>
+    </div>
+    <div id="ach-list"><!-- JS 生成 --></div>
+  </aside>
+
+  <!-- ======================= 物理标注 ======================= -->
+  <div id="anno"></div>
+
+<div id="toast" role="status"></div>
+
+<!-- ======================= 覆盖层 ======================= -->
+<div id="overlay">
+  <div class="overlay-box">
+    <div class="spinner" id="ov-spinner"></div>
+    <h2 id="ov-title">GARGANTUA</h2>
+    <p id="ov-msg">正在初始化 WebGL…</p>
+    <div id="ov-actions" hidden>
+      <button class="btn" id="btn-safemode">安全模式</button>
+      <button class="btn" id="btn-retry">重试</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
