@@ -250,6 +250,10 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 按档位:低档 20–26ms 伺服 ~30fps(60Hz 屏 30fps 信号 = 33.3−8.5 = 24.8 落带内),其余 7.5–9 伺服
 60fps。`uVolSub=1` 段中点机制就位未启用(QUALITIES 一行开关的储备)。v2.2.1。详 TESTREPORT §16。
 
+**十三轮(代码审查)**:修 adapt 跨档状态泄漏(setQuality 清零 _failScale/连击)、
+主循环对象分配归零、hhStep 盘区门控(远场免 pow);低档 ×0.55 壳层跳过经禁用 A/B
+逐位等价(9dca6c1f),安全边际确认。详 TESTREPORT §17。
+
 ## 12. 待办 / 可选方向（均未开始，等用户指令）
 
 - 暂缓：双黑洞并合（含 LIGO chirp）、WebXR（无硬件不可验，不盲发）。
