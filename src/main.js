@@ -668,6 +668,7 @@ let vsyncMin = 16.7;               // vsync 周期估计(运行中的最小间�
 let fps = 60;
 let costEma = 8;
 let lastCost = 8;                   // 上一帧 CPU 提交耗时(adapt 在渲染前用)
+const frameOpts = { jitter: false }; // 复用的渲染参数对象(主循环每帧零分配)
 let rafId = 0;
 let hiddenTimer = 0;
 let running = true;
@@ -732,7 +733,8 @@ function renderOne() {
   camera.updateMatrixWorld();
   engine.updateCamera(camera);
   // 长曝光时启用亚像素抖动:帧累积顺带完成时域超采样(冻结模式保持确定性)
-  engine.renderFrame(simTime, state.view, { jitter: state.longExposure && !state.freeze });
+  frameOpts.jitter = state.longExposure && !state.freeze;
+  engine.renderFrame(simTime, state.view, frameOpts);
   // 光子轨迹叠加(合成 pass 已输出到画布,直接叠加渲染,不清屏)
   if (geolab.enabled) {
     const r = engine.renderer;

@@ -263,6 +263,10 @@ export class Engine {
     this.uRT.uSubCap.value = def.subCap ?? 1.6;
     this.uRT.uFarMul.value = def.farMul ?? 3.0;
     this.resScale = 1.0;
+    // 自适应状态清零:_failScale/出带连击是"本档位"的教训,跨档泄漏会让新档位
+    // 被旧档位的失败上限压住(如低档 0.8 失败过,切标准档后回升被卡在 0.78)
+    this._ema = undefined; this._over = 0; this._under = 0; this._failScale = undefined;
+    this._adaptCount = 0; // 重新静默 50 帧,给新档位稳定窗口
     this.resize();
   }
 
@@ -438,7 +442,12 @@ export class Engine {
   }
 
   renderFrame(timeSec, debugView = 0, opts = {}) {
-    this._lastRender = { t: timeSec, view: debugView, opts: { ...opts } }; // 供 resize 后立即重绘
+    // 记录最近渲染参数供 resize 后立即重绘:复用同一对象,主循环路径零分配
+    // (opts 只取 jitter 一个开关;调用方传的对象允许是复用的)
+    if (!this._lastRender) this._lastRender = { t: 0, view: 0, opts: { jitter: false } };
+    const lr = this._lastRender;
+    lr.t = timeSec; lr.view = debugView;
+    lr.opts.jitter = !!(opts && opts.jitter);
     this.uRT.uTime.value = timeSec;
     this.uRT.uDebug.value = debugView;
     this.uComp.uTime.value = timeSec;

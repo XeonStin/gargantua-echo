@@ -436,7 +436,9 @@ void main() {
     float dt = clamp(0.16 * (r - uRs * 0.9), 0.028, 3.2)
              * (1.0 + uFarMul * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     float hhStep = 0.0;
-    if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
+    // 本步标称半厚(门控/壳层跳过/细分共用):只在盘区附近有消费者,
+    // 远场步免掉 diskHalfHeight 的 pow(rg,0.65)(每光线省 3-6 次 pow × 全屏)
+    if (uVolDisk > 0.5 && r < uDiskOut + 4.0) hhStep = diskHalfHeight(r);
     bool densified = false;
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
       // 薄层门控(半径相关):子采样有贡献要求 |sp.y| < 5.75×HH ≤ 8.625×dHH(r)
@@ -686,7 +688,8 @@ void main() {
     float dt = clamp(0.16 * (r - rH * 0.9), 0.028, 3.2)
              * (1.0 + uFarMul * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     float hhStep = 0.0;
-    if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
+    // 与 Verlet 路径同源:盘区附近才求半厚(远场免 pow)
+    if (uVolDisk > 0.5 && r < uDiskOut + 4.0) hhStep = diskHalfHeight(r);
     bool densified = false;
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
       // 薄层门控(与 Verlet 路径同源,半径相关):|世界 y|=|X.z|,世界 y 向速度 = KS 的 dX1.z。
