@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-05（十一轮：移动端低画质档 + 自适应分辨率 60fps 重调）
+> 最后更新：2026-11-05（十四轮：首访功能引导 + 十三轮审查修复）
 
 ---
 
@@ -249,6 +249,11 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 13.31→9.49ms(−29%),盘开销 −57%。`resFloor` 0.8(手机 ≈297×546 = 用户 300×600 下限);目标带
 按档位:低档 20–26ms 伺服 ~30fps(60Hz 屏 30fps 信号 = 33.3−8.5 = 24.8 落带内),其余 7.5–9 伺服
 60fps。`uVolSub=1` 段中点机制就位未启用(QUALITIES 一行开关的储备)。v2.2.1。详 TESTREPORT §16。
+
+**十四轮(首访功能引导)**:`src/guide.js` 6 步聚光卡(含画质调节),面板「引导」重开,
+`?guide=1` 强制 / `?guide=0` 禁止,API `startGuide()`,自动化场景(still/snap/webdriver/reset/
+tour/s/panel/safemode/无HUD)一律豁免。**命名坑**:ui opts 的 `onGuide` 已被摄影构图线占用,
+引导回调是 `onStartGuide`。v2.3.0。详 TESTREPORT §18。
 
 **十三轮(代码审查)**:修 adapt 跨档状态泄漏(setQuality 清零 _failScale/连击)、
 主循环对象分配归零、hhStep 盘区门控(远场免 pow);低档 ×0.55 壳层跳过经禁用 A/B
