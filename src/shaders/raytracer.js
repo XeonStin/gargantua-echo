@@ -59,7 +59,10 @@ uniform vec2  uJitter;     // 亚像素抖动(纹素单位,长曝光时域超采
 uniform float uSpin;       // Kerr 自旋 a/M ∈ [0, 0.998]
 uniform float uJet;        // 相对论喷流强度(0 = 关)
 uniform float uVolDisk;    // 体积吸积盘开关(0 = 无穷薄穿越,1 = 体积积分)
-uniform float uVolSub;     // 体积盘子采样数(4 全 / 2 低档;≤3.5 时隔一取一,权重×2 亮度自守恒)
+uniform float uVolSub;     // 体积盘子采样数(4 全 / 2 低档 / 1 极限;隔一取一,权重补偿亮度自守恒)
+uniform float uDensify;    // 盘区加密步长系数(0.40 默认 / 0.55 低档,粗化的是求积而非物理)
+uniform float uSubCap;     // 贴板细分上限(×当地半厚,1.6 默认 / 2.2 低档)
+uniform float uFarMul;     // 远场大步长倍率(3 默认 / 5 低档;r > 盘外缘+14,弱场区误差可忽略)
 uniform sampler2D uBB;     // 黑体色 LUT(256×1,800K-30000K)
 uniform vec3   uGalPole;   // 银道面法向(程序化银河取向)
 uniform sampler2D uDiskTex; // 吸积盘有机细节纹理(本地烘焙,可平铺)
@@ -431,7 +434,7 @@ void main() {
     // 自适应步长:视界附近致密;盘外远场弯曲可忽略 → 步长放大
     // (物理形状不变:弱场区 Verlet 误差 ~dt²·a 仍远小于 1M;盘面穿越检测与步长无关)
     float dt = clamp(0.16 * (r - uRs * 0.9), 0.028, 3.2)
-             * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
+             * (1.0 + uFarMul * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     float hhStep = 0.0;
     if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
     bool densified = false;
@@ -444,10 +447,10 @@ void main() {
       float ay = abs(pos.y);
       if (ay < gate || ay - gate < abs(vel.y) * dt * 0.6) {
         densified = true;
-        dt *= 0.40; // 体积盘模式:盘区加密采样(十轮由 0.28 放宽,4 子采样仍解析薄层,亮度按 ev∝segLen 自守恒)
+        dt *= uDensify; // 体积盘模式:盘区加密采样(默认 0.40/低档 0.55,亮度按 ev∝segLen 自守恒)
         // 贴近盘面时按当地半厚再加密:外缘薄刃不再被大体积元一口吞掉
-        // (十轮:上限 hh→1.6hh,细分步长仍 ≤ 薄层特征厚度的 1/3)
-        if (r > uDiskIn * 0.8 && ay < hhStep * 3.0) dt = min(dt, max(0.06, hhStep * 1.6));
+        // (默认上限 hh→1.6hh;低档 2.2hh,配合逐像素相位抖动)
+        if (r > uDiskIn * 0.8 && ay < hhStep * 3.0) dt = min(dt, max(0.06, hhStep * uSubCap));
       }
     }
     float halfDt2 = 0.5 * dt * dt;
@@ -480,11 +483,13 @@ void main() {
             (crossY || yNear < yCut)) {
           float segLen = length(npos - pos);
           vec3 vDir = normalize(nvel); // 提出子采样循环
-          // 段积分权重:低档 2 子采样时 ×2 补偿,亮度自守恒(乘法形式,默认档表达式逐字不变)
-          float ev = segLen * (0.25 - 0.125 * step(3.5, uVolSub));
+          // 段积分权重:子采样数减半权重加倍,亮度自守恒(乘法形式,默认档表达式逐字不变)
+          float ev = segLen * (0.5 - 0.25 * step(1.5, uVolSub) - 0.125 * step(3.5, uVolSub));
           for (int s = 0; s < 4; s++) {
             if (uVolSub < 3.5 && (s == 1 || s == 3)) continue; // 低档:隔一取一
+            if (uVolSub < 1.5 && s >= 2) continue;             // 极限:每段 1 子采样
             vec3 sp = mix(pos, npos, (float(s) + pixPh) * 0.25);
+            if (uVolSub < 1.5) sp = mix(pos, npos, pixPh * 0.25 + 0.375); // 极限档:段中点+逐像素相位
             float sr = diskRadius(sp);
             if (sr < uDiskIn * 0.82 || sr > uDiskOut) continue;
             if (abs(sp.y) >= 5.0 * hMax) continue; // 远在薄层外:免 diskHalfHeight 求值
@@ -679,7 +684,7 @@ void main() {
 
     // 自适应步长(λ 与坐标距离同量级:|dX| ≈ E ≈ 1)
     float dt = clamp(0.16 * (r - rH * 0.9), 0.028, 3.2)
-             * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
+             * (1.0 + uFarMul * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     float hhStep = 0.0;
     if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
     bool densified = false;
@@ -689,9 +694,9 @@ void main() {
       float ay = abs(X.z);
       if (ay < gate || ay - gate < abs(dX1.z) * dt * 0.6) {
         densified = true;
-        dt *= 0.40; // 体积盘模式:盘区加密采样(十轮由 0.28 放宽,与 Verlet 路径同源)
+        dt *= uDensify; // 体积盘模式:盘区加密采样(默认 0.40/低档 0.55,与 Verlet 路径同源)
         if (r > uDiskIn * 0.8 && ay < hhStep * 3.0) { // KS 坐标里世界 y = X.z
-          dt = min(dt, max(0.06, hhStep * 1.6));
+          dt = min(dt, max(0.06, hhStep * uSubCap));
         }
       }
     }
@@ -724,11 +729,13 @@ void main() {
         if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0 &&
             (crossY || yNear < yCut)) {
           vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
-          // 段积分权重:低档 2 子采样时 ×2 补偿,亮度自守恒(乘法形式,默认档表达式逐字不变)
-          float ev = segLen * (0.25 - 0.125 * step(3.5, uVolSub));
+          // 段积分权重:子采样数减半权重加倍,亮度自守恒(乘法形式,默认档表达式逐字不变)
+          float ev = segLen * (0.5 - 0.25 * step(1.5, uVolSub) - 0.125 * step(3.5, uVolSub));
           for (int s = 0; s < 4; s++) {
             if (uVolSub < 3.5 && (s == 1 || s == 3)) continue; // 低档:隔一取一
+            if (uVolSub < 1.5 && s >= 2) continue;             // 极限:每段 1 子采样
             vec3 spKS = mix(X, nX, (float(s) + pixPh) * 0.25);
+            if (uVolSub < 1.5) spKS = mix(X, nX, pixPh * 0.25 + 0.375); // 极限档:段中点+逐像素相位
             vec3 spW = vec3(spKS.x, spKS.z, -spKS.y);
             float sr = diskRadius(spW);
             if (sr < uDiskIn * 0.82 || sr > uDiskOut) continue;

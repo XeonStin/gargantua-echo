@@ -911,7 +911,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.2.0',
+  version: '2.2.1',
   ready: false,
   info() {
     return {

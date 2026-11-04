@@ -61,9 +61,12 @@ export const PARAM_META = [
 ];
 
 // 画质档:prCap = DPR 上限,steps = 积分步数,bloomLevels = Bloom 金字塔层数,
-// volSub = 体积盘子采样数(4 全 / 2 低档,亮度按 ev 补偿自守恒),resFloor = 动态分辨率下限
+// volSub = 体积盘子采样数(4 全 / 2 低档 / 1 极限,ev 补偿自守恒),resFloor = 动态分辨率下限,
+// densify/subCap/farMul = 低档积分粗化(加密系数/贴板细分上限/远场倍率,默认路径不受影响),
+// adaptLo/Hi = 动态分辨率目标带 ms(低档伺服 ~30fps,其余伺服 60fps)
 export const QUALITIES = {
-  low:       { label: '低',   prCap: 1.0, steps: 96,  bloomLevels: 3, volSub: 2, resFloor: 0.35 },
+  low:       { label: '低',   prCap: 1.0, steps: 96,  bloomLevels: 3, volSub: 2, resFloor: 0.8,
+               densify: 0.55, subCap: 2.2, farMul: 5.0, adaptLo: 20, adaptHi: 26 },
   standard:  { label: '标准', prCap: 1.5, steps: 128, bloomLevels: 4, volSub: 4, resFloor: 0.45 },
   high:      { label: '高',   prCap: 2.0, steps: 192, bloomLevels: 5, volSub: 4, resFloor: 0.45 },
   cinematic: { label: '电影', prCap: 2.0, steps: 320, bloomLevels: 6, volSub: 4, resFloor: 0.45 },
