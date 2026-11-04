@@ -480,3 +480,20 @@ v2.2.1。
 - sharecode `q` 已有 QUALITIES 校验;innerHTML 均为静态模板;setParam 有键守卫 + 值钳制。
 - 已知限制备案:30Hz 省电模式下标准/高/电影档会把 GPU-bound 误判为掉帧(无法与真 30Hz 屏
   区分);低档不受影响(目标带覆盖 24.8ms 信号)。
+
+## 18. 十四轮:首访功能引导(含画质调节)(2026-11-05)
+
+新功能:`src/guide.js` + 面板「引导」按钮。首访自动弹出 6 步聚光卡:欢迎 → 视角预设 →
+**画质调节**(聚光 HUD 画质下拉)→ 参数面板 → 工具与快捷键 → 完成。聚光层不拦截指针,
+引导开着即可真实操作被高亮的控件;`←→/Esc` 翻页/关闭;完成或跳过写 localStorage
+`gargantua_guide_v1`,此后不再自动弹。重开入口:参数面板工具行「引导」按钮、`?guide=1`、
+API `startGuide()`;`?guide=0` 显式禁止。自动化豁免:still/snap/webdriver/safemode/隐藏 HUD/
+?reset/?tour/?s/?panel 场景一律不自动弹。v2.3.0。
+
+### 验证(IAB,rAF 挂起环境下用 startGuide API 驱动)
+| 项 | 结果 |
+| --- | --- |
+| 步骤聚光定位 | 内联样式核对:step2=preset-group[1811,8,228,45];step3=#sel-quality → spot[1886,45,65,48](目标[1894,53,49,32]+8px pad)精确吻合;step4=#btn-panel;step5=整行 tool-group[1469,45,571,49];step1/6 居中无聚光 ✓ |
+| 生命周期 | 完成 → 关闭 + flag=1;面板「引导」→ 重开;Esc → 关闭(capture 相位拦截,不误开面板);跳过按钮 ✓ |
+| 零错误 | 全流程 err=0;canvas 截图不受 DOM 覆盖层影响(确定性口径不变) |
+| 首访自动弹 | rAF 在 IAB 长期挂起、onFirstFrame 不可达,真机路径未在此环境观测;豁免条件与 flag 逻辑经代码复核 + flag 读写实测 |

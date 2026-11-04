@@ -11,6 +11,7 @@ import { Flight } from './flight.js';
 import { GeodesicLab } from './geodesic.js';
 import { Annotations } from './annotations.js';
 import { Achievements } from './achievements.js';
+import { Guide } from './guide.js';
 import { Tour } from './tour.js';
 import { FILM_LOOKS, buildWatermark } from './photomode.js';
 import { buildShareURL, decodeShare } from './sharecode.js';
@@ -106,6 +107,7 @@ function fatal(msg) {
 }
 
 // ---------------- UI ----------------
+const guide = new Guide(); // 功能引导(面板「引导」按钮 / 首访自动弹;见 onFirstFrame)
 ui = new UI({
   onParam: (k, v) => setParam(k, v),
   onQuality: (q) => setQuality(q),
@@ -137,6 +139,7 @@ ui = new UI({
   onGeoArm: (on) => setGeoArmed(on),
   onFilmLook: (id) => applyFilmLook(id),
   onGuide: (id) => ui.setGuideUI(id),
+  onStartGuide: () => guide.start(),
   onShareCopy: () => copyShareLink(),
   onShareImport: () => importShareCode(),
 });
@@ -836,6 +839,7 @@ function onFirstFrame() {
     `WebGL2=${engine.isWebGL2} HDR=${engine.hdrFloat} · 内部分辨率 ${engine.W}×${engine.H} · ` +
     `质量 ${state.quality} · ${PARAM_COUNT} 参数 · 移动端=${IS_MOBILE}`);
   ui.toast('GARGANTUA 就绪 · Space 暂停循环 · P 打开参数面板');
+  guide.maybeAutoStart(state); // 首访功能引导(自动化/隐藏 HUD/带参场景豁免;?guide=1 强制)
 }
 
 scheduleLoop();
@@ -913,7 +917,8 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.2.1',
+  version: '2.3.0',
+  startGuide: () => guide.start(),
   ready: false,
   info() {
     return {

@@ -45,6 +45,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `M` | 氛围音乐(本地 `assets/audio/ambient-drone.wav`,32s 无缝循环) |
 | `S` | 保存 PNG 截图(分辨率跟随面板「导出分辨率」) |
 | `Q` | 循环画质档:低 / 标准 / 高 / 电影 |
+| `→` / `Esc` | 功能引导:下一步 / 关闭(引导开启时) |
 | `R` / `Shift+R` | 复位视角 / 复位参数 |
 | `F` | 全屏 |
 
@@ -55,6 +56,10 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 相对论:**自旋 a/M(0–0.998)**、**相对论喷流**、多普勒增亮、多普勒色移、引力红移、透镜强度  
 星空:恒星密度、恒星亮度、银河亮度  
 后期:泛光强度、泛光阈值、曝光、暗角、胶片颗粒、色散
+
+**功能引导**:首次访问自动弹出 6 步聚光卡(欢迎 / 视角预设 / **画质调节** / 参数面板 / 工具与快捷键 / 完成);
+聚光层不拦截指针,引导开着就能直接试画质下拉。可随时在**参数面板 → 引导**重新打开。
+URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 
 盘内半径不得低于 ISCO:任何设置/分享码/自旋变化都会自动钳到 ISCO(自旋 0 → 6M,a=0.318 → 4.91M)。自旋 > 0 时:盘内半径自动跟随 ISCO(a=0.9 → 2.32M)内移;手动改过或显式 URL 给出(`?diskInner=`)则不再自动跟随,**但 ISCO 物理下限钳制始终生效**(低于 ISCO 的显式值会抬回 ISCO,更大的值不会被重置)。
 
@@ -123,6 +128,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `?vol=1` / `?anno=1` / `?eht=1` / `?film=0/1` / `?refcolor=0/1` | 体积盘 / 标注 / EHT / 电影色调 / 参考配色 |
 | `?flyb=2.01..3.0` | 自由飞行安全边界(米制 M;越小时间膨胀越强) |
 | `?tour=1` | 自动开始导览 |
+| `?guide=1/0` | 强制弹出 / 禁止功能引导(默认:首访自动) |
 | `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**) |
 | `?cine=0/1` `?music=0/1` `?hud=0/1` `?panel=0/1` | 模式开关 |
 | `?freeze=1` | 冻结动画时间(确定性截图) |
@@ -133,7 +139,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.2.0):
+**JS API**(`window.gargantua` v2.3.0):
 
 ```js
 gargantua.ready / info()
@@ -143,6 +149,7 @@ gargantua.setFpsCap(0|30|60|90|120|144|165) / setExportSize('screen'|'4k'|'8k')
 gargantua.setLongExposure(b) / setExposureFrames(2..64)
 gargantua.setVolDisk(b) / setAnnotations(b) / setEHT(b) / setFilmGrade(b) / setRefColor(b) / setWatermark(b)
 gargantua.setTour(b) / setPhoto(b) / setGeoArm(b) / launchPhoton(ndcX, ndcY)
+gargantua.startGuide()             // 打开功能引导(首访自动;面板「引导」可重开)
 gargantua.share()                    // 生成分享链接
 gargantua.applyShareCode('...')      // 导入分享码
 gargantua.renderFrames(n) / renderOne() / benchmark(n)

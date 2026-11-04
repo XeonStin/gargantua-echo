@@ -16,7 +16,7 @@ const TOGGLE_IDS = {
 
 export class UI {
   constructor(opts) {
-    this.o = opts; // { onParam, onQuality, onFpsCap, onExportSize, onPreset, onCine, onMusic, onScreenshot, onResetParams, onReseed, onView, onMode, onLongExposure, onExposureFrames }
+    this.o = opts; // { onParam, onQuality, onFpsCap, onExportSize, onPreset, onCine, onMusic, onScreenshot, onResetParams, onReseed, onView, onMode, onLongExposure, onExposureFrames, onGuide(摄影构图线), onStartGuide(功能引导) }
     this.hud = $('hud');
     this.statLine = $('stat-line');
     this.physLine = $('phys-line');
@@ -190,6 +190,7 @@ export class UI {
       'btn-ach': () => { this.toggleAch(); },
       'btn-share': () => this.o.onShareCopy(),
       'btn-import': () => this.o.onShareImport(),
+      'btn-guide': () => this.o.onStartGuide?.(),
       'btn-ach-close': () => this.toggleAch(false),
     };
     for (const [id, fn] of Object.entries(map)) {

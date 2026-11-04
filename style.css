@@ -361,3 +361,27 @@ select.btn option { background: #111; color: var(--fg); }
 }
 .anno-label:nth-child(2) { color: #ff8a6a; }
 .anno-label:nth-child(3) { color: #ffc878; }
+
+/* ---------------- 功能引导 ---------------- */
+#guide { position: fixed; inset: 0; z-index: 40; display: none; pointer-events: none; }
+#guide.on { display: block; }
+.guide-spot {
+  position: absolute; pointer-events: none; border-radius: 10px;
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.62), 0 0 18px rgba(255, 179, 71, 0.35);
+  transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+}
+.guide-card {
+  position: absolute; width: min(340px, calc(100vw - 24px));
+  pointer-events: auto;
+  background: rgba(8, 8, 10, .9); border: 1px solid rgba(255, 179, 71, .45); border-radius: 12px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  padding: 14px 16px; box-shadow: 0 0 40px rgba(255, 140, 40, .14);
+}
+.guide-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.guide-title { font-size: 14px; letter-spacing: .1em; color: var(--accent); font-weight: 600; }
+.guide-prog { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.guide-text { font-size: 13px; line-height: 1.8; color: var(--fg); margin-bottom: 10px; }
+.guide-text b { color: var(--accent2); font-weight: 600; }
+.guide-ctrl { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.guide-skip { margin-right: auto; color: var(--dim); }

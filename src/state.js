@@ -127,6 +127,7 @@ export function parseURL() {
     refcolor: bool('refcolor'),
     flyb: num('flyb'),
     tour: bool('tour'),
+    guide: bool('guide'),
     s: q.get('s') || undefined,
     t: num('t'),
     snapName: q.get('snap') || undefined,
