@@ -44,7 +44,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `H` / 双击 | 显示/隐藏 HUD |
 | `M` | 氛围音乐(本地 `assets/audio/ambient-drone.wav`,32s 无缝循环) |
 | `S` | 保存 PNG 截图(分辨率跟随面板「导出分辨率」) |
-| `Q` | 循环画质档:标准 / 高 / 电影 |
+| `Q` | 循环画质档:低 / 标准 / 高 / 电影 |
 | `R` / `Shift+R` | 复位视角 / 复位参数 |
 | `F` | 全屏 |
 
@@ -74,10 +74,13 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 
 ## 画质档
 
-- **标准**:DPR 上限 1.5,128 积分步,4 级 Bloom(移动端默认)
-- **高**:DPR 上限 2.0,192 步,5 级 Bloom(默认)
+- **低**:DPR 上限 1.0,96 积分步,3 级 Bloom,体积盘 2 子采样(**移动端默认**;动态分辨率下限 0.35×,目标稳定 60fps)
+- **标准**:DPR 上限 1.5,128 积分步,4 级 Bloom
+- **高**:DPR 上限 2.0,192 步,5 级 Bloom
 - **电影**:DPR 上限 2.0,320 步,6 级 Bloom(桌面默认)
-- 三档均以原生 CSS 分辨率 × DPR 渲染,帧耗过高时自适应动态分辨率自动下调(下限 0.45×)
+- 各档均以原生 CSS 分辨率 × DPR 渲染,帧耗过高时自适应动态分辨率自动下调
+  (目标带 7.5–9ms:60/120/165Hz 屏幕上都稳定 servo 到 60fps;低档下限 0.35×,其余 0.45×)
+- 低档体积盘 2 子采样:亮度按积分权重 ×2 补偿自守恒,观感与 4 子采样一致,仅细节略粗
 - **帧率限制**:面板内可选 不限/30/60/90/120/144/165(令牌桶节流,跳过帧不推进时间)
 - **长曝光**:后期分组开关 + 曝光帧数滑杆(2–64)。帧累积(EMA,RGBA16F 单缓冲 alpha 混合)。
   **开启时每帧自动做亚像素抖动(Halton 序列)——帧累积顺带完成时域超采样抗锯齿**;
@@ -109,7 +112,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `?preset=0..3` | 视角预设(自带 FOV,除非显式给 `?fov=`) |
 | `?mode=cine/orbit/fly` | 初始模式(自由飞行) |
 | `?view=0..9` | 调试视图 |
-| `?quality=standard/high/cinematic` | 画质档 |
+| `?quality=low/standard/high/cinematic` | 画质档(移动端无存档时默认 low) |
 | `?p=key=val,key2=val2`(或直接 `?diskInner=5`) | 覆盖任意参数(含 spin/jetPower,越界自动夹回) |
 | `?seed=N` / `?t=秒` / `?fps=N` | 星空种子 / 初始时间 / 帧率上限 |
 | `?le=0/1` / `?lef=N` | 长曝光开关 / 曝光帧数 |
@@ -128,7 +131,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.1.0):
+**JS API**(`window.gargantua` v2.2.0):
 
 ```js
 gargantua.ready / info()
@@ -162,6 +165,8 @@ window.__LAST_EXPORT__ / window.__GARGANTUA_ERRORS__
 **720p 重场景 1.4–3.3ms**(1K 60fps 底线的 5 倍余量)。物理无损优化:远场大步长 ×4、
 弯曲常数提出循环、盘噪声降八度、黑体 LUT、Bloom 低分辨率金字塔、8K 导出内存原地翻转减半。
 另有隐藏标签页 setTimeout 降级、帧率限制令牌桶(跳过帧不推进时间)。
+**移动端**:低画质档(DPR 1.0 / 96 步 / 3 级 Bloom / 体积盘 2 子采样)+ 自适应动态分辨率
+ servo 60fps;旗舰机(Adreno 750)实测由 21fps(标准档)回到满帧 60(十一轮)。
 
 ## 目录结构
 

@@ -42,9 +42,9 @@ window.__GARGANTUA_ERRORS__ = [];
     pushErr('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)).slice(0, 500)));
 }
 
-// 全新会话:移动端默认标准档(有本地存档则尊重存档)
+// 全新会话:移动端默认低档(手机 GPU 跑体积盘全效到不了 60fps;有本地存档则尊重存档)
 if (!localStorage.getItem('gargantua53f.v1') && IS_MOBILE && !new URLSearchParams(location.search).has('quality')) {
-  state.quality = 'standard';
+  state.quality = 'low';
 }
 
 // ---------------- 相机与控制 ----------------
@@ -780,7 +780,9 @@ function loop(now = performance.now()) {
   lastRafNow = now;
   if (iv > 1 && iv < 1000) {
     ivEma = ivEma === 0 ? iv : ivEma * 0.9 + iv * 0.1;
-    vsyncMin = Math.min(Math.max(4, vsyncMin * 1.02), iv); // 漂移上探刷新率,允许显示器切换
+    // vsync 基线封顶 8.5ms:GPU 满载时所有帧都超时,ratchet 会一路追到 iv、把掉帧信号
+    // (ivEma−vsyncMin) 归零;封顶后 60/120/165Hz 屏幕的 GPU 超支都能被正确看到
+    vsyncMin = Math.min(8.5, Math.max(4, vsyncMin * 1.02), iv);
   }
   if (state.fpsCap === 0 && !document.hidden) engine.adapt(cost, ivEma, vsyncMin); // 有限流时锁定原生分辨率,不做动态降采样
   costEma = costEma * 0.92 + cost * 0.08;
@@ -904,7 +906,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.1.0',
+  version: '2.2.0',
   ready: false,
   info() {
     return {

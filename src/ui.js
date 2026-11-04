@@ -399,7 +399,7 @@ export class UI {
   }
 
   _nextQuality() {
-    const order = ['standard', 'high', 'cinematic'];
+    const order = ['low', 'standard', 'high', 'cinematic'];
     const cur = $('sel-quality').value;
     return order[(order.indexOf(cur) + 1) % order.length];
   }

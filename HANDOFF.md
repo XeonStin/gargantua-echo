@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-05（九轮：代码审查修复 + 真实星空移除 + 体积盘薄层门控优化）
+> 最后更新：2026-11-05（十一轮：移动端低画质档 + 自适应分辨率 60fps 重调）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.1.0'`，24 参数，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.2.0'`，24 参数，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -58,7 +58,7 @@ gargantua-echo/
   ISCO 跟随 a=0.9→2.32M。
 
 ### 管线顺序
-`主 pass(RT) → [长曝光累积 RGBA16F EMA, 4子采样体积盘] → Bloom 金字塔 → 合成(色散/ACES/EHT/电影色调/暗角/颗粒)`
+`主 pass(RT) → [长曝光累积 RGBA16F EMA, 4子采样体积盘(低档 2)] → Bloom 金字塔 → 合成(色散/ACES/EHT/电影色调/暗角/颗粒)`
 - 长曝光：`accum = accum·(1−1/N) + frame·1/N`（CustomBlending，**累积 pass 必须 noClear**，首帧 w=1）；
   LE 开启时每帧 Halton 抖动 = TAA；`freeze` 时抖动归零保证确定性。
 - 导出：`engine.renderExport()` 按目标尺寸重建管线 → RGBA8 → readPixels → **原地逐行翻转** → toBlob PNG；
@@ -69,7 +69,7 @@ gargantua-echo/
 - 丝状层 = 各向异性柱坐标（切向 ×0.55）上 4 层 vnoise **相乘**；
 - 细节纹理 = `uDiskTex`（disktex.js 烘焙）按 (θ·3, r·1.6) 采样，`clamp(detail²·4,0.1,1.7)` 混合 0.5；
 - 内缘白热环 = Lorentzian `0.9/((rimDist·14)²+0.06)`，密度门控、体积盘 ×0.35；
-- 体积盘 = 段内 **4 子采样**（防阶梯带），盘区步长 ×0.40（十轮放宽,含薄层门控与壳层跳过,见 §10）；
+- 体积盘 = 段内 **4 子采样**（防阶梯带;低档 2,亮度按 ev 补偿,见 §11），盘区步长 ×0.40（十轮放宽,含薄层门控与壳层跳过,见 §10）；
 - 电影色调（uFilm）：盘面双色带 + 合成胶片曲线（S 0.32 + 通道 gamma 1.08/1.03/1.0 + 抬暗 0.94）。
 
 ## 4. 功能清单（全部可用）
@@ -119,8 +119,10 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 - GLSL ES 1.0：**没有 `saturate()`**，用 clamp；`texture2D` 隐式 LOD 在分歧分支可用但别依赖。
 - Kerr 路径的湍流/喷流相位必须用 `uTime`（动画时钟）；曾用 kT（逐光线积分时间）导致盘/喷流冻结。
 - 差速剪切基准必须是盘外缘（保证 diff≥0 同向）；中点基准会让内外圈反向。
-- 体积盘：4 子采样 + dt×0.40（十轮;勿回 0.28 除非连带回调门控）+ 薄层门控/壳层跳过（§10）；
+- 体积盘：4 子采样（低档 2,uVolSub 控制）+ dt×0.40（十轮;勿回 0.28 除非连带回调门控）+ 薄层门控/壳层跳过（§10）；
   辉光在体积模式 ×0.35（4 子采样叠加会白片）。
+- **子采样权重补偿必须乘法形式并进 `ev`**（§11）：在 `col +=` 尾部追加 `* evMul` 会让 ANGLE/D3D
+  改变 FMA 收缩,默认档输出不再逐位一致——十轮三元 select 坑的同族问题。
 - `flyMinR = max(边界, r₊·1.005)`；飞行子步 ≤1/60s + 速度上限（防卡顿瞬移）。
 - 确定性：所有烘焙纹理固定种子；freeze 时 jitter=0；`?freeze=1&still=1` 两次截图必须逐字节一致。
 
@@ -202,14 +204,41 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 当前终态 = ×0.40/1.6hh(远景哈希 f4e1ae18 与已验证态精确一致)。要再压帧率优先降步数
 (?quality=high,192 步,远景 −26%)而非再放步长。
 
-## 11. 待办 / 可选方向（均未开始，等用户指令）
+## 11. 十一轮（移动端低画质档 + 60fps 自适应重调,2026-11-05）
+
+背景:用户红魔 9 Pro(骁龙 8 Gen 3/Adreno 750)线上实测 21fps @ 339×623(标准档 128 步)。
+目标:手机 60fps,允许降分辨率/一定画质下降,关键元素必须齐全。
+
+**改动**:
+1. **新「低」画质档**(`QUALITIES.low`):DPR 上限 1.0、96 步、3 级 Bloom、体积盘 2 子采样
+   (`uVolSub`,亮度按 `ev = segLen*(0.25-0.125*step(3.5,uVolSub))` ×2 补偿自守恒)、动态分辨率
+   下限 0.35×(其余档 0.45×)。移动端无存档时默认低档(有存档尊重存档)。
+2. **自适应分辨率重调**(`engine.adapt`):目标带 13.5–27ms → **7.5–9ms**。旧带对应 37–74fps
+   (永远 servo 不到 60);新带利用「60/120/165Hz 屏幕上满帧 60fps 的 iv−vsync 信号同为
+   16.7−8.5≈8.2ms」落在带内,稳定在 60fps。下限改按档位 `resFloor`。
+3. **vsyncMin 封顶 8.5ms**(`main.js`):GPU 满载时 rAF ratchet 会一路追到 iv、把掉帧信号
+   (ivEma−vsyncMin)归零,自适应在 GPU-bound 手机上失明;封顶后各刷新率的 GPU 超支都能被看到。
+   副作用:60Hz 屏幕瞬态降档后不自动回升(iv≈16.7→eff 8.2 落在带内不动;切一次画质档复位)。
+4. Q 循环 low→standard→high→cinematic;两个 select 加「低」;`?quality=low`;分享码通用透传;
+   v2.2.0。
+
+**验收(git stash 三明治 + IAB)**:
+- **standard 档逐位不变**:a75252fd 精确一致。关键坑:子采样补偿第一版写成 `col += ... * evMul`
+  (乘 ×1.0 数学恒等)但哈希改变——ANGLE/D3D 的 **FMA 收缩随表达式形状改变**;把补偿并进 ev
+  本身(乘法形式、下游表达式逐字不变)后恢复逐位一致。与十轮三元 select 坑同族,已写入 AGENTS.md。
+- 低档 80 步时阴影上缘内侧出现步数耗尽带(灰斑),96 步消除 → 定档 96。
+- 低档页内双渲染逐字节一致(跨加载哈希差异为 IAB 环境漂移,§9 已知);Kerr 0.9 低档 0 错误;
+  Q 循环/分享码 roundtrip/safemode/双 select 全过。
+- 手机端帧率待用户真机确认(自适应会自动找到 60fps 平衡点)。
+
+## 12. 待办 / 可选方向（均未开始，等用户指令）
 
 - 暂缓：双黑洞并合（含 LIGO chirp）、WebXR（无硬件不可验，不盲发）。
 - 候选：视频导出（WebCodecs）、相机关键帧编辑器、分屏对比滑块、多普勒声效、hover 星表识别、
   倾斜盘+进动、引力波模式、TDE 场景、双语 i18n、PWA、课堂模式、参数画廊。
 - 未决小项：无。当前构建干净、0 错误。
 
-## 12. 八轮(参考配方盘面重写,2026-11-04)
+## 13. 八轮(参考配方盘面重写,2026-11-04)
 
 - **盘面模型换成参考项目做法**:`coverage = pow(1-rg,1.35) × 垂直锥 × 6 层乘积噪声 × 有机纹理 × 内密外疏`,`dustGlow=1/(rg²·120+0.02)` 内缘白热 + `vGlow=1/(y²·45+0.01)` 垂直光晕;旧的等值面密度/伪光影/独立 rimGlow 已移除。
 - **体积模式**:恢复 4 子采样 + 逐像素相位抖动(单采样会出同心圆壳,固定相位会出竖条纹),亮度系数按 readPixels 实测配平到 2.20(俯视 volOn/volOff ≈ 0.95)。
@@ -220,11 +249,11 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 - **默认值**更新为分享场景:FOV 57.5、cinematic、体积盘开、参考配色开、内径 4.91、外径 16.5、厚 0.31、自旋 0.318、曝光 0.53、暗角 0.48、颗粒 0.045、色散 0.3、泛光 0.04。
 - 已知遗留:体积模式亮度随视线路径长度变化,俯视配平、侧视略亮(真实体积的固有特性);`dopplerBeaming` 现为物理值 1.0。
 
-## 13. 文档索引
+## 14. 文档索引
 
 - `AGENTS.md`：常驻工作约定（自动加载）——启动命令、硬约束、验收流程，开工先读。
 - `TESTREPORT.md` 第 12 节：七轮（参考配方升级）验证；第 11 节已知环境限制。
 - `README.md`：用法/参数/开关/URL/API/性能/目录/错误恢复。
-- `TESTREPORT.md`：历轮证据；**末节 = 九轮（审查修复 + 薄层门控）验证**；含已知环境限制。
+- `TESTREPORT.md`：历轮证据；**末节 = 十一轮（移动端低画质档）验证**；含已知环境限制。
 - 记忆文件：`~/.zcode/cli/memories/projects/ai-playground-9dcf04bbe96961ed/memory/gargantua-53f-project.md`
   （含历轮技术要点与测试坑，MEMORY.md 有索引行）。

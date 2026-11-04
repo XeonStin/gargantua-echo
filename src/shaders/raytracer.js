@@ -59,6 +59,7 @@ uniform vec2  uJitter;     // 亚像素抖动(纹素单位,长曝光时域超采
 uniform float uSpin;       // Kerr 自旋 a/M ∈ [0, 0.998]
 uniform float uJet;        // 相对论喷流强度(0 = 关)
 uniform float uVolDisk;    // 体积吸积盘开关(0 = 无穷薄穿越,1 = 体积积分)
+uniform float uVolSub;     // 体积盘子采样数(4 全 / 2 低档;≤3.5 时隔一取一,权重×2 亮度自守恒)
 uniform sampler2D uBB;     // 黑体色 LUT(256×1,800K-30000K)
 uniform vec3   uGalPole;   // 银道面法向(程序化银河取向)
 uniform sampler2D uDiskTex; // 吸积盘有机细节纹理(本地烘焙,可平铺)
@@ -479,8 +480,10 @@ void main() {
             (crossY || yNear < yCut)) {
           float segLen = length(npos - pos);
           vec3 vDir = normalize(nvel); // 提出子采样循环
-          float ev = segLen * 0.125;   // 段积分权重(与子采样数同源,提出循环)
+          // 段积分权重:低档 2 子采样时 ×2 补偿,亮度自守恒(乘法形式,默认档表达式逐字不变)
+          float ev = segLen * (0.25 - 0.125 * step(3.5, uVolSub));
           for (int s = 0; s < 4; s++) {
+            if (uVolSub < 3.5 && (s == 1 || s == 3)) continue; // 低档:隔一取一
             vec3 sp = mix(pos, npos, (float(s) + pixPh) * 0.25);
             float sr = diskRadius(sp);
             if (sr < uDiskIn * 0.82 || sr > uDiskOut) continue;
@@ -721,8 +724,10 @@ void main() {
         if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0 &&
             (crossY || yNear < yCut)) {
           vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
-          float ev = segLen * 0.125; // 段积分权重(与子采样数同源,提出循环)
+          // 段积分权重:低档 2 子采样时 ×2 补偿,亮度自守恒(乘法形式,默认档表达式逐字不变)
+          float ev = segLen * (0.25 - 0.125 * step(3.5, uVolSub));
           for (int s = 0; s < 4; s++) {
+            if (uVolSub < 3.5 && (s == 1 || s == 3)) continue; // 低档:隔一取一
             vec3 spKS = mix(X, nX, (float(s) + pixPh) * 0.25);
             vec3 spW = vec3(spKS.x, spKS.z, -spKS.y);
             float sr = diskRadius(spW);

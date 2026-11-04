@@ -157,6 +157,7 @@ export class Engine {
       uSpin:     { value: 0 },                       // Kerr 自旋 a/M
       uJet:      { value: 0 },                       // 相对论喷流强度
       uVolDisk:  { value: 0 },                       // 体积吸积盘开关
+      uVolSub:   { value: 4 },                       // 体积盘子采样数(4 全 / 2 低档)
       uGalPole:  { value: new THREE.Vector3(0.32, 0.86, 0.39) }, // 银道面法向
       uBB:       { value: null },
       uDiskTex:  { value: null },
@@ -254,6 +255,7 @@ export class Engine {
     this.quality = q;
     const def = QUALITIES[q] || QUALITIES.high;
     this.uRT.uSteps.value = def.steps;
+    this.uRT.uVolSub.value = def.volSub ?? 4;
     this.resScale = 1.0;
     this.resize();
   }
@@ -272,7 +274,9 @@ export class Engine {
 
   // 自适应动态分辨率:帧时间过高压低,宽松时缓慢回升(上限受质量档约束)。
   // frameMs 只是 CPU 提交代价(GPU 满载时测不到);intervalEma−vsyncMin 补充掉帧信号:
-  // rAF 间隔超出 vsync 周期的部分 ≈ GPU 真实超支,取两者较大值作为有效帧耗。
+  // rAF 间隔超出 vsync 周期的部分 ≈ GPU 真实超支,取两者较大者作为有效帧耗。
+  // 目标带 7.5–9ms:60Hz 与 120Hz 屏幕上「满帧 60fps」的 iv−vsync 信号同为 16.7−8.5 ≈ 8.2,
+  // 落在带内 → 稳定在 60fps;持续低于 ~55fps 才降采样,避免在 40–70fps 之间徘徊。
   adapt(frameMs, intervalEma = 0, vsyncMin = 0) {
     const q = QUALITIES[this.quality] || QUALITIES.high;
     if (q === QUALITIES.safemode) return;
@@ -281,9 +285,10 @@ export class Engine {
     this._adaptCount = (this._adaptCount || 0) + 1;
     if (this._adaptCount < 50 || !this._lastAdapt) this._lastAdapt = performance.now();
     if (this._adaptCount % 45 !== 0) return;
+    const floor = q.resFloor ?? 0.45;
     let s = this.resScale;
-    if (this._ema > 27 && s > 0.45) s = Math.max(0.45, s * 0.87);
-    else if (this._ema < 13.5 && s < 1.0) s = Math.min(1.0, s * 1.06);
+    if (this._ema > 9.0 && s > floor) s = Math.max(floor, s * 0.87);
+    else if (this._ema < 7.5 && s < 1.0) s = Math.min(1.0, s * 1.06);
     if (Math.abs(s - this.resScale) > 0.02) {
       this.resScale = s;
       this.resize();
