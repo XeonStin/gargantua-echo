@@ -667,6 +667,7 @@ let ivEma = 0;                     // rAF 间隔 EMA
 let vsyncMin = 16.7;               // vsync 周期估计(运行中的最小间隔,缓慢漂移上探)
 let fps = 60;
 let costEma = 8;
+let lastCost = 8;                   // 上一帧 CPU 提交耗时(adapt 在渲染前用)
 let rafId = 0;
 let hiddenTimer = 0;
 let running = true;
@@ -772,9 +773,6 @@ function loop(now = performance.now()) {
     });
   }
 
-  const t0 = performance.now();
-  renderOne();
-  const cost = performance.now() - t0;
   // rAF 间隔信号:GPU 满载表现为掉帧(间隔超出 vsync 周期),CPU cost 测不到这部分
   const iv = now - lastRafNow;
   lastRafNow = now;
@@ -784,8 +782,15 @@ function loop(now = performance.now()) {
     // (ivEma−vsyncMin) 归零;封顶后 60/120/165Hz 屏幕的 GPU 超支都能被正确看到
     vsyncMin = Math.min(8.5, Math.max(4, vsyncMin * 1.02), iv);
   }
-  if (state.fpsCap === 0 && !document.hidden) engine.adapt(cost, ivEma, vsyncMin); // 有限流时锁定原生分辨率,不做动态降采样
-  costEma = costEma * 0.92 + cost * 0.08;
+  // 自适应分辨率必须在渲染**之前**:resize 会清空画布,若渲染后才改尺寸,合成器会在下一帧
+  // 绘制前采样到空画布 → 用户看到黑屏闪烁。先 adapt 再 renderOne,同帧立即以新尺寸重绘。
+  // (有限流时锁定原生分辨率;长曝光时不动分辨率——resize 会清空累积缓冲导致画面跳变)
+  if (state.fpsCap === 0 && !state.longExposure && !document.hidden) engine.adapt(lastCost, ivEma, vsyncMin);
+
+  const t0 = performance.now();
+  renderOne();
+  lastCost = performance.now() - t0;
+  costEma = costEma * 0.92 + lastCost * 0.08;
   fps = fps * 0.93 + (1 / Math.max(dt, 1e-4)) * 0.07;
   frame++;
 

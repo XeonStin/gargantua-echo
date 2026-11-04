@@ -270,6 +270,11 @@ export class Engine {
     this.W = w; this.H = h;
     this.renderer.setSize(w, h, false);
     this.buildTargets();
+    // setSize 清空了画布:立即重绘一帧,不留空帧给合成器(否则窗口变化/切档/降采样时黑屏一闪)。
+    // 启动阶段尚无成功渲染,跳过(首帧主循环会画)。
+    if (this._lastRender) {
+      this.renderFrame(this._lastRender.t, this._lastRender.view, this._lastRender.opts);
+    }
   }
 
   // 自适应动态分辨率:帧时间过高压低,宽松时缓慢回升(上限受质量档约束)。
@@ -277,6 +282,8 @@ export class Engine {
   // rAF 间隔超出 vsync 周期的部分 ≈ GPU 真实超支,取两者较大者作为有效帧耗。
   // 目标带 7.5–9ms:60Hz 与 120Hz 屏幕上「满帧 60fps」的 iv−vsync 信号同为 16.7−8.5 ≈ 8.2,
   // 落在带内 → 稳定在 60fps;持续低于 ~55fps 才降采样,避免在 40–70fps 之间徘徊。
+  // 防抖:决策窗口 90 帧 + 连续 2 个窗口出带才动作;回升不超过上次引发掉帧的档位
+  // (_failScale,防 60Hz 上"60↔40fps"极限环),带内时缓慢上探放宽该上限。
   adapt(frameMs, intervalEma = 0, vsyncMin = 0) {
     const q = QUALITIES[this.quality] || QUALITIES.high;
     if (q === QUALITIES.safemode) return;
@@ -284,14 +291,22 @@ export class Engine {
     this._ema = this._ema === undefined ? eff : this._ema * 0.94 + eff * 0.06;
     this._adaptCount = (this._adaptCount || 0) + 1;
     if (this._adaptCount < 50 || !this._lastAdapt) this._lastAdapt = performance.now();
-    if (this._adaptCount % 45 !== 0) return;
+    if (this._adaptCount % 90 !== 0) return;
     const floor = q.resFloor ?? 0.45;
     let s = this.resScale;
-    if (this._ema > 9.0 && s > floor) s = Math.max(floor, s * 0.87);
-    else if (this._ema < 7.5 && s < 1.0) s = Math.min(1.0, s * 1.06);
+    if (this._ema > 9.0) { this._over = (this._over || 0) + 1; this._under = 0; }
+    else if (this._ema < 7.5) { this._under = (this._under || 0) + 1; this._over = 0; }
+    else { this._over = 0; this._under = 0; this._failScale = Math.min(1.0, (this._failScale || 1.0) * 1.01); }
+    if (this._ema > 9.0 && this._over >= 2 && s > floor) {
+      this._failScale = Math.min(this._failScale || 1.0, s); // 记住引发掉帧的档位
+      s = Math.max(floor, s * 0.90);
+    } else if (this._ema < 7.5 && this._under >= 2 && s < 1.0) {
+      const cap = Math.min(1.0, (this._failScale || 1.0) * 0.97);
+      if (s < cap) s = Math.min(cap, s * 1.05);
+    }
     if (Math.abs(s - this.resScale) > 0.02) {
       this.resScale = s;
-      this.resize();
+      this.resize(); // resize 内部立即重绘,不留空画布帧
     }
   }
 
@@ -416,6 +431,7 @@ export class Engine {
   }
 
   renderFrame(timeSec, debugView = 0, opts = {}) {
+    this._lastRender = { t: timeSec, view: debugView, opts: { ...opts } }; // 供 resize 后立即重绘
     this.uRT.uTime.value = timeSec;
     this.uRT.uDebug.value = debugView;
     this.uComp.uTime.value = timeSec;

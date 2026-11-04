@@ -418,3 +418,13 @@ shader/engine/state/ui/main/sharecode 全链路 + `src/stars.js` + `assets/data/
 (96/128 步)×(盘区子采样减半)≈ 35–45%;自适应分辨率在新目标带下持续 servo 到 60fps,
 不够时自动降到 0.35× 下限(约 0.04MP,极端兜底)。旧手机状态(21fps)的另一半原因
 是自适应失明(GPU-bound 信号被 vsyncMin ratchet 吃掉),封顶修复后 60Hz/120Hz 都能正确降采样。
+
+### 追加(用户反馈):自适应切换频繁 + 切换瞬间黑屏一闪
+- 黑闪根源:adapt 在渲染后调用,resize 清空画布,合成器在下一帧绘制前采样到空画布。
+  修复:主循环先 adapt 再 renderOne(同帧重绘)+ engine.resize() 末尾用 _lastRender 立即重绘
+  (覆盖窗口 resize/手动切档路径)。IAB 实测:setQuality('low') 后同一 evaluate 内立即截图
+  = 7.0MB 满内容 PNG(非黑屏)。
+- 防抖:决策窗口 90 帧 + 连续 2 窗口出带确认 + _failScale 回升上限(防 60Hz 极限环) +
+  长曝光时暂停 adapt。
+- 回归:standard 档逐位一致(a75252fd);低档实况 60s 六次采样分辨率零变化(fps 101-115,
+  IAB ~110Hz),0 错误。

@@ -231,6 +231,18 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
   Q 循环/分享码 roundtrip/safemode/双 select 全过。
 - 手机端帧率待用户真机确认(自适应会自动找到 60fps 平衡点)。
 
+**用户反馈修复(同轮追加):自适应每几秒切分辨率 + 切换瞬间黑屏一闪**:
+1. **黑闪根源**:adapt 在 renderOne 之后调用,resize 清空画布后合成器在下一帧绘制前采样到
+   空画布。修复:主循环改为**先 adapt(可能 resize)再 renderOne**,同帧立即重绘;
+   `engine.resize()` 末尾再补一枪 `renderFrame(_lastRender)`(renderFrame 记录最近参数),
+   覆盖窗口变化/手动切档等事件驱动路径——IAB 实测切档后同帧截图即为满内容(7MB PNG,非黑)。
+2. **切换频率**:决策窗口 45→90 帧;出带需**连续 2 个窗口**确认;回升加 `_failScale` 上限
+   (记住引发掉帧的档位,回升不超过 ×0.97,带内时每窗口 ×1.01 缓慢上探)防 60Hz 极限环;
+   降档步进 0.87→0.90、回升 1.06→1.05。
+3. 长曝光开启时暂停 adapt(resize 会清空累积缓冲导致画面跳变)。
+4. 回归:standard 档逐位一致(a75252fd);IAB 低档实况 60s 六次采样分辨率零变化(110fps 稳定);
+   0 控制台错误。
+
 ## 12. 待办 / 可选方向（均未开始，等用户指令）
 
 - 暂缓：双黑洞并合（含 LIGO chirp）、WebXR（无硬件不可验，不盲发）。
