@@ -94,7 +94,8 @@ export class Annotations {
 
     // 标签
     const g = Math.sqrt(Math.max(0, 1 - rs / d));
-    this.lShadow.textContent = `阴影 / 光子环 b_c = √27·M ≈ ${bc.toFixed(2)} M`;
+    this.lShadow.textContent = `阴影 / 光子环 b_c = √27·M ≈ ${bc.toFixed(2)} M` +
+      (spin > 0.001 ? '(Schwarzschild 口径近似;Kerr 高自旋为 D 形)' : '');
     this.lHorizon.textContent = `事件视界 r+ = ${rH.toFixed(2)} M${spin > 0.001 ? '(Kerr)' : ''}`;
     this.lIsco.textContent = `ISCO r = ${ri.toFixed(2)} M`;
     this.lDisk.textContent = `吸积盘 ${diskIn.toFixed(1)}–${diskOut.toFixed(1)} M · g(∞) = ${g.toFixed(2)}`;

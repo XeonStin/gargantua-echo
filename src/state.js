@@ -1,4 +1,4 @@
-// GARGANTUA — 状态:22 项参数 / 画质 / 视图 / URL 自动化接口 / localStorage 持久化
+// GARGANTUA — 状态:24 项参数 / 画质 / 视图 / URL 自动化接口 / localStorage 持久化
 
 export const DEFAULTS = {
   fov: 57.5,               // 视场角 (度) — 相机参数,不是着色器 uniform
@@ -26,7 +26,7 @@ export const DEFAULTS = {
   grain: 0.045,          // 胶片颗粒
   aberration: 0.3,       // 色散
 };
-export const PARAM_COUNT = Object.keys(DEFAULTS).length; // = 22
+export const PARAM_COUNT = Object.keys(DEFAULTS).length; // = 24
 
 export const PARAM_META = [
   // 相机
@@ -60,11 +60,12 @@ export const PARAM_META = [
   { key: 'aberration',       label: '色散',       group: '后期',   min: 0.0,  max: 3.0,  step: 0.02 },
 ];
 
+// 画质档:prCap = DPR 上限,steps = 积分步数,bloomLevels = Bloom 金字塔层数
 export const QUALITIES = {
-  standard:  { label: '标准', scale: 0.62, prCap: 1.5, steps: 128, bloomLevels: 4 },
-  high:      { label: '高',   scale: 0.85, prCap: 2.0, steps: 192, bloomLevels: 5 },
-  cinematic: { label: '电影', scale: 1.0,  prCap: 2.0, steps: 320, bloomLevels: 6 },
-  safemode:  { label: '安全', scale: 0.5,  prCap: 1.0, steps: 96,  bloomLevels: 3 },
+  standard:  { label: '标准', prCap: 1.5, steps: 128, bloomLevels: 4 },
+  high:      { label: '高',   prCap: 2.0, steps: 192, bloomLevels: 5 },
+  cinematic: { label: '电影', prCap: 2.0, steps: 320, bloomLevels: 6 },
+  safemode:  { label: '安全', prCap: 1.0, steps: 96,  bloomLevels: 3 },
 };
 
 export const DEBUG_VIEWS = [
@@ -115,7 +116,6 @@ export function parseURL() {
     lef: num('lef') !== undefined ? (num('lef') | 0) : undefined,
     exp: enumv('exp', EXPORT_SIZES.map(s => s.id)),
     vol: bool('vol'),
-    stars: bool('stars'),
     anno: bool('anno'),
     eht: bool('eht'),
     film: bool('film'),
@@ -164,7 +164,7 @@ export function persist(state) {
         seed: state.seed,
         fpsCap: state.fpsCap, longExposure: state.longExposure, exposureFrames: state.exposureFrames,
         exportSize: state.exportSize,
-        volDisk: state.volDisk, realStars: state.realStars,
+        volDisk: state.volDisk,
         annotations: state.annotations, eht: state.eht, watermark: state.watermark,
         filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
       }));
@@ -184,7 +184,6 @@ export function initState() {
     exposureFrames: 11,
     exportSize: 'screen', // 截图/导出分辨率:screen | 4k | 8k
     volDisk: true,       // 体积吸积盘(默认开)
-    realStars: false,    // 真实星表星空(性能开关,默认关)
     annotations: false,  // 物理标注叠加
     filmGrade: true,     // 电影色调(胶片曲线 + 盘面双色带),默认开
     refColor: true,      // 参考配色(内缘白热 + 外缘橙褐),默认开
@@ -226,7 +225,6 @@ export function initState() {
       }
       if (EXPORT_SIZES.some(s => s.id === saved.exportSize)) state.exportSize = saved.exportSize;
       if (typeof saved.volDisk === 'boolean') state.volDisk = saved.volDisk;
-      if (typeof saved.realStars === 'boolean') state.realStars = saved.realStars;
       if (typeof saved.annotations === 'boolean') state.annotations = saved.annotations;
       if (typeof saved.eht === 'boolean') state.eht = saved.eht;
       if (typeof saved.watermark === 'boolean') state.watermark = saved.watermark;
@@ -246,7 +244,6 @@ export function initState() {
   if (url.lef !== undefined) state.exposureFrames = Math.min(LE_FRAMES.max, Math.max(LE_FRAMES.min, url.lef));
   if (url.exp) state.exportSize = url.exp;
   if (url.vol !== undefined) state.volDisk = url.vol;
-  if (url.stars !== undefined) state.realStars = url.stars;
   if (url.anno !== undefined) state.annotations = url.anno;
   if (url.eht !== undefined) state.eht = url.eht;
   if (url.film !== undefined) state.filmGrade = url.film;

@@ -32,7 +32,7 @@ export function buildShareURL(state, camera) {
     longExposure: state.longExposure, exposureFrames: state.exposureFrames,
     mode: state.mode === 'cine' ? 'orbit' : state.mode, // 分享静态视角,不给对方强开循环
     toggles: {
-      vd: state.volDisk ? 1 : 0, rs: state.realStars ? 1 : 0,
+      vd: state.volDisk ? 1 : 0,
       an: state.annotations ? 1 : 0, eht: state.eht ? 1 : 0,
       fg: state.filmGrade ? 1 : 0, rc: state.refColor ? 1 : 0,
       wm: state.watermark ? 1 : 0, ga: state.geoArmed ? 1 : 0,

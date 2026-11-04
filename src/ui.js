@@ -1,4 +1,4 @@
-// GARGANTUA — UI:HUD 统计、22 参数面板、快捷键、Toast、覆盖层
+// GARGANTUA — UI:HUD 统计、24 参数面板、快捷键、Toast、覆盖层
 import { PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, DEFAULTS, LE_FRAMES } from './state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -6,7 +6,6 @@ const $ = (id) => document.getElementById(id);
 // 状态键 → DOM id(必须显式映射:驼峰键拼 tgl-${id} 找不到 tgl-voldisk/tgl-geo 之类的元素)
 const TOGGLE_IDS = {
   volDisk: 'tgl-voldisk',
-  realStars: 'tgl-realstars',
   annotations: 'tgl-anno',
   eht: 'tgl-eht',
   filmGrade: 'tgl-film',
@@ -174,7 +173,7 @@ export class UI {
     }
     // 工具开关(aria-pressed 样式复用 .active)
     for (const [id, ev] of [
-      ['tgl-voldisk', 'onVolDisk'], ['tgl-realstars', 'onRealStars'],
+      ['tgl-voldisk', 'onVolDisk'],
       ['tgl-anno', 'onAnnotations'], ['tgl-eht', 'onEHT'], ['tgl-film', 'onFilmGrade'],
       ['tgl-refcolor', 'onRefColor'],
       ['tgl-watermark', 'onWatermark'], ['tgl-geo', 'onGeoArm'],

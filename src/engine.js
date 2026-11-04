@@ -42,9 +42,10 @@ void main() {
 }
 `;
 
-function makeRT(w, h) {
+function makeRT(w, h, forceLDR = false) {
   const rt = new THREE.WebGLRenderTarget(Math.max(w, 4), Math.max(h, 4), {
-    type: THREE.HalfFloatType,
+    // 无 EXT_color_buffer_float 的罕见环境降级到 8 位目标(丢 HDR 精度,但可渲染)
+    type: forceLDR ? THREE.UnsignedByteType : THREE.HalfFloatType,
     format: THREE.RGBAFormat,
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
@@ -101,9 +102,6 @@ export class Engine {
       this.bbTex.wrapS = THREE.ClampToEdgeWrapping;
       this.bbTex.needsUpdate = true;
     }
-    // 真实星空占位(1×1 黑),烘焙完成后替换
-    this.starsTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
-    this.starsTex.needsUpdate = true;
     // 吸积盘有机细节纹理(本地烘焙,固定种子保证确定性)
     {
       const res = bakeDiskTexture(512, 16);
@@ -159,10 +157,8 @@ export class Engine {
       uSpin:     { value: 0 },                       // Kerr 自旋 a/M
       uJet:      { value: 0 },                       // 相对论喷流强度
       uVolDisk:  { value: 0 },                       // 体积吸积盘开关
-      uRealStars: { value: 0 },                      // 真实星表星空开关
       uGalPole:  { value: new THREE.Vector3(0.32, 0.86, 0.39) }, // 银道面法向
       uBB:       { value: null },
-      uStars:    { value: null },
       uDiskTex:  { value: null },
       uFilm:     { value: 1 },
       uRefColor: { value: 0 },
@@ -184,7 +180,6 @@ export class Engine {
     // Kerr 路径:同一份 uniforms,独立 program(保证自旋 0 快速路径的寄存器占用不受影响)
     this.matRTKerr = new THREE.ShaderMaterial({ ...opts, fragmentShader: RT_FRAG_KERR, uniforms: this.uRT });
     this.uRT.uBB.value = this.bbTex;
-    this.uRT.uStars.value = this.starsTex;
     this.uRT.uDiskTex.value = this.diskTex;
     this.matPre = new THREE.ShaderMaterial({ ...opts, fragmentShader: PREFILTER_FRAG, uniforms: this.uPre });
     this.matDown = new THREE.ShaderMaterial({ ...opts, fragmentShader: DOWN_FRAG, uniforms: this.uDown });
@@ -209,17 +204,18 @@ export class Engine {
   buildTargets(withAccum = true) {
     this.disposeTargets();
     const w = this.W, h = this.H;
-    this.sceneRT = makeRT(w, h);
+    const ldr = !this.hdrFloat; // 无浮点渲染目标扩展时整条管线降级 8 位
+    this.sceneRT = makeRT(w, h, ldr);
     // 高分辨率导出且未开长曝光时省掉一整块累积缓冲(8K 可省 265 MB)
-    this.accumRT = withAccum ? makeRT(w, h) : null;
+    this.accumRT = withAccum ? makeRT(w, h, ldr) : null;
     // Bloom 金字塔:L0 = 半分辨率
     const levels = QUALITIES[this.quality]?.bloomLevels ?? 5;
     this.downRT = []; this.upRT = [];
     for (let i = 0; i < levels; i++) {
       const bw = Math.max(4, (w >> (i + 1)));
       const bh = Math.max(4, (h >> (i + 1)));
-      this.downRT.push(makeRT(bw, bh));
-      this.upRT.push(makeRT(bw, bh));
+      this.downRT.push(makeRT(bw, bh, ldr));
+      this.upRT.push(makeRT(bw, bh, ldr));
     }
     this.uRT.uRes.value.set(w, h);
     this.uComp.uRes.value.set(w, h);
@@ -333,21 +329,6 @@ export class Engine {
   // 性能开关:体积吸积盘
   setVolDisk(on) {
     this.uRT.uVolDisk.value = on ? 1 : 0;
-  }
-
-  // 性能开关:真实星表星空(烘焙纹理由 stars 模块注入)
-  setRealStars(on) {
-    this.uRT.uRealStars.value = on ? 1 : 0;
-  }
-
-  setStarsTexture(tex) {
-    if (this.starsTex && this.starsTex !== tex) this.starsTex.dispose();
-    this.starsTex = tex;
-    this.uRT.uStars.value = tex;
-  }
-
-  setGalPole(v3) {
-    this.uRT.uGalPole.value.copy(v3);
   }
 
   // EHT 对比模式(合成 pass 内完成,不加 pass)
@@ -536,7 +517,6 @@ export class Engine {
     this.disposeTargets();
     [this.matRT, this.matRTKerr, this.matPre, this.matDown, this.matUp, this.matComp].forEach(m => m?.dispose());
     this.bbTex?.dispose();
-    this.starsTex?.dispose();
     this.diskTex?.dispose();
     this.mesh.geometry.dispose();
     this.renderer.dispose();

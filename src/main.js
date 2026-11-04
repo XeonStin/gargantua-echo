@@ -14,9 +14,6 @@ import { Achievements } from './achievements.js';
 import { Tour } from './tour.js';
 import { FILM_LOOKS, buildWatermark } from './photomode.js';
 import { buildShareURL, decodeShare } from './sharecode.js';
-import { bakeStarsTexture, GAL_POLE_REAL } from './stars.js';
-
-const GAL_POLE_ART = new THREE.Vector3(0.32, 0.86, 0.39).normalize(); // 艺术银极(程序化模式)
 
 const T0 = performance.now();
 const canvas = document.getElementById('gl');
@@ -127,7 +124,6 @@ ui = new UI({
   onReseed: () => reseed(),
   onView: (v) => setView(v),
   onVolDisk: (on) => setVolDisk(on),
-  onRealStars: (on) => setRealStars(on),
   onFlyBoundary: (v, opts) => setFlyBoundary(v, opts),
   onAnnotations: (on) => setAnnotations(on),
   onEHT: (on) => setEHT(on),
@@ -166,6 +162,7 @@ canvas.addEventListener('click', (e) => {
   camera.updateMatrixWorld();
   const r = geolab.launchFromCamera(ndcX, ndcY, {
     spin: state.params.spin, rs: 2, diskOut: state.params.diskOuter,
+    lensing: state.params.lensing,
   });
   ach.track('fan');
   ui.toast(`光子扇 ×${r.count} · 捕获 ${r.statuses.captured} / 逃逸 ${r.statuses.escaped}` +
@@ -193,13 +190,23 @@ engine.setEHT(state.eht);
 engine.setFilmGrade(state.filmGrade);
 engine.setRefColor(state.refColor);
 annotations.visible = state.annotations;
-// URL/存档带自旋且未显式给盘内半径时,初始化同样把盘内缘跟到 ISCO
-if (state.params.spin > 0.001 && diskInnerAuto) {
-  const isco = iscoRadius(state.params.spin);
-  state.params.diskInner = +Math.min(Math.max(isco, 2.0), Math.min(state.params.diskOuter * 0.7, 9.0)).toFixed(2);
-  engine.setParam('diskInner', state.params.diskInner);
+// URL/存档带自旋时,初始化把盘内缘抬到物理下限 ISCO —— 只抬不压:
+// 用户手动调大的值与显式 URL 参数(diskInner=)不允许被重置回 ISCO;
+// 但显式值低于 ISCO 时仍强制物理下限(与 setParam 的运行时约束一致)
+if (state.params.spin > 0.001) {
+  const isco = +iscoRadius(state.params.spin).toFixed(2);
+  const uq = new URLSearchParams(location.search);
+  const diskInnerExplicit = uq.has('diskInner') || (uq.get('p') || '').split(',').some(p => p.startsWith('diskInner='));
+  if (state.params.diskInner < isco - 0.01) {
+    let target = isco;
+    if (diskInnerAuto && !diskInnerExplicit) {
+      // 未显式给内半径:跟随 ISCO(含外径比例与 9.0 上限)
+      target = +Math.min(Math.max(isco, 2.0), Math.min(state.params.diskOuter * 0.7, 9.0)).toFixed(2);
+    }
+    state.params.diskInner = target;
+    engine.setParam('diskInner', target);
+  }
 }
-if (state.realStars) setRealStars(true); // 烘焙真实星空(~40ms 同步)
 
 // ---------------- 交互回调 ----------------
 function clampParam(key, v) {
@@ -347,10 +354,12 @@ function gotoPreset(i, silent) {
 }
 
 function toggleMusic() {
-  const on = audio.toggle();
-  state.music = on;
-  ui.setMusicUI(on);
-  ui.toast(on ? '氛围音乐 · 开' : '氛围音乐 · 关');
+  // enable 是异步的(解码/自动播放策略):await 结果再更新 UI,失败不会"假开"
+  audio.toggle().then(on => {
+    state.music = on;
+    ui.setMusicUI(on);
+    ui.toast(on ? '氛围音乐 · 开' : '氛围音乐 · 关');
+  });
 }
 
 let lastExportUrl = null;
@@ -443,7 +452,6 @@ function resetParams() {
 function reseed() {
   state.seed = (Math.random() * 1000000) | 0;
   engine.setSeed(state.seed);
-  if (state.realStars) setRealStars(true); // 重新烘焙暗星分布
   persist(state);
   ui.toast(`星空种子 ${state.seed}`);
 }
@@ -462,23 +470,6 @@ function setVolDisk(on) {
   ui.setToggleUI('volDisk', state.volDisk);
   persist(state);
   ui.toast(state.volDisk ? '体积吸积盘 · 开(盘区积分加密,帧耗上升)' : '体积吸积盘 · 关');
-}
-
-function setRealStars(on) {
-  if (exporting) return;
-  state.realStars = !!on;
-  if (state.realStars) {
-    const res = bakeStarsTexture(state.seed);
-    engine.setStarsTexture(res.tex);
-    engine.setGalPole(GAL_POLE_REAL);
-    ui.toast(`真实星空 · ${res.count} 颗亮星已烘焙(${res.ms.toFixed(0)}ms,运行时零额外开销)`);
-  } else {
-    engine.setGalPole(GAL_POLE_ART);
-    ui.toast('真实星空 · 关(程序化星空)');
-  }
-  engine.setRealStars(state.realStars);
-  ui.setToggleUI('realStars', state.realStars);
-  persist(state);
 }
 
 function setAnnotations(on) {
@@ -503,7 +494,6 @@ function setFilmGrade(on) {
   if (exporting) return;
   state.filmGrade = !!on;
   engine.setFilmGrade(state.filmGrade);
-engine.setRefColor(state.refColor);
   ui.setToggleUI('filmGrade', state.filmGrade);
   persist(state);
   ui.toast(state.filmGrade ? '电影色调 · 开(胶片曲线 + 盘面双色带)' : '电影色调 · 关(纯 ACES)');
@@ -595,7 +585,6 @@ function applyShareCode(s) {
   if (obj.t) {
     const T = obj.t;
     if (T.vd !== undefined) setVolDisk(!!T.vd);
-    if (T.rs !== undefined) setRealStars(!!T.rs);
     if (T.an !== undefined) setAnnotations(!!T.an);
     if (T.eht !== undefined) setEHT(!!T.eht);
     if (T.fg !== undefined) setFilmGrade(!!T.fg);
@@ -607,7 +596,7 @@ function applyShareCode(s) {
   if (typeof obj.sd === 'number') { state.seed = obj.sd | 0; engine.setSeed(state.seed); }
   setLongExposure(!!obj.le);
   if (typeof obj.lf === 'number') setExposureFrames(obj.lf);
-  if (Array.isArray(obj.c) && obj.c.length === 4) {
+  if (Array.isArray(obj.c) && obj.c.length === 4 && obj.c.every(v => typeof v === 'number' && isFinite(v))) {
     setMode('orbit', { silent: true });
     camera.position.set(obj.c[0], obj.c[1], obj.c[2]);
     camera.fov = Math.min(110, Math.max(25, obj.c[3]));
@@ -629,7 +618,6 @@ ui.setLongExposureUI(state.longExposure);
 ui.setExposureFramesUI(state.exposureFrames);
 ui.setParamsUI(state.params);
 ui.setToggleUI('volDisk', state.volDisk);
-ui.setToggleUI('realStars', state.realStars);
 ui.setFlyBoundaryUI(state.flyBoundary);
 ui.setToggleUI('annotations', state.annotations);
 ui.setToggleUI('eht', state.eht);
@@ -684,11 +672,13 @@ let hiddenTimer = 0;
 let running = true;
 const STILL_SETTLE = 36; // still 模式:先渲染 36 帧让阻尼收敛再停
 
-// 隐藏标签页中 rAF 被挂起 → 降级为 setTimeout 驱动,保证截图自动化可用
+// 隐藏标签页中 rAF 被挂起 → 降级为 setTimeout 驱动。仅自动化场景启用
+// (?snap= 截图流 / webdriver):普通用户切后台时循环完全停止,不烧 GPU。
 function scheduleLoop() {
   if (!running) return;
-  if (document.hidden) hiddenTimer = setTimeout(loop, 16);
-  else rafId = requestAnimationFrame(loop);
+  if (document.hidden) {
+    if (state.snapName || navigator.webdriver) hiddenTimer = setTimeout(loop, 16);
+  } else rafId = requestAnimationFrame(loop);
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -914,7 +904,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.0.0',
+  version: '2.1.0',
   ready: false,
   info() {
     return {
@@ -924,7 +914,7 @@ window.gargantua = {
       quality: state.quality, mode: state.mode, view: state.view, fpsCap: state.fpsCap,
       exportSize: state.exportSize,
       longExposure: state.longExposure, exposureFrames: state.exposureFrames,
-      volDisk: state.volDisk, realStars: state.realStars,
+      volDisk: state.volDisk,
       annotations: state.annotations, eht: state.eht, watermark: state.watermark,
       filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
       geoArmed: state.geoArmed, tour: tour.active, tourStation: tour.station,
@@ -944,7 +934,6 @@ window.gargantua = {
   setLongExposure(on) { setLongExposure(!!on); return state.longExposure; },
   setExposureFrames(n) { setExposureFrames(+n); return state.exposureFrames; },
   setVolDisk(on) { setVolDisk(!!on); return state.volDisk; },
-  setRealStars(on) { setRealStars(!!on); return state.realStars; },
   setFlyBoundary(v) { setFlyBoundary(+v, { commit: true }); return state.flyBoundary; },
   setAnnotations(on) { setAnnotations(!!on); return state.annotations; },
   setEHT(on) { setEHT(!!on); return state.eht; },
@@ -957,7 +946,10 @@ window.gargantua = {
   launchPhoton(ndcX = 0, ndcY = 0) {
     if (exporting) return null;
     camera.updateMatrixWorld();
-    const r = geolab.launchFromCamera(ndcX, ndcY, { spin: state.params.spin, rs: 2, diskOut: state.params.diskOuter });
+    const r = geolab.launchFromCamera(ndcX, ndcY, {
+      spin: state.params.spin, rs: 2, diskOut: state.params.diskOuter,
+      lensing: state.params.lensing,
+    });
     ach.track('fan');
     return r;
   },
@@ -999,7 +991,7 @@ window.gargantua = {
     return { r, polar: +(polar * 180 / Math.PI).toFixed(1), az: +(az * 180 / Math.PI).toFixed(1), fov: +camera.fov.toFixed(1) };
   },
   setCine(on) { setMode(on ? 'cine' : 'orbit'); return state.mode; },
-  setSeed(s) { state.seed = s | 0; engine.setSeed(state.seed); if (state.realStars) setRealStars(true); persist(state); return state.seed; },
+  setSeed(s) { state.seed = s | 0; engine.setSeed(state.seed); persist(state); return state.seed; },
   setMusic(on) { if (on !== audio.enabled) toggleMusic(); return audio.enabled; },
   resetParams,
   resetView: () => gotoPreset(0, true),

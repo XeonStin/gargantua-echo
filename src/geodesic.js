@@ -9,18 +9,19 @@ const sst = (a, b, x) => {
 };
 
 // 单光子积分(KS 坐标)。返回世界坐标轨迹点数组与状态。
-function integratePhoton(roW, rdW, { spin, rs, escR, diskOut, maxSteps = 2600, recEvery = 2 }) {
+function integratePhoton(roW, rdW, { spin, rs, escR, diskOut, lensing = 1, maxSteps = 2600, recEvery = 2 }) {
   const M = rs * 0.5;
   const aL = spin * M;
   const aL2 = aL * aL;
   const rH = M * (1 + Math.sqrt(Math.max(1 - spin * spin, 0)));
-  const lensing = 1;
 
   // 世界 → KS:(X,Y,Z) = (x, −z, y)
   const X = new THREE.Vector3(roW.x, -roW.z, roW.y);
   const d0 = new THREE.Vector3(rdW.x, -rdW.z, rdW.y);
   const k = new THREE.Vector3();
-  // 度规标量场与 k 矢量(显式按位置求值,k 写入闭包供导数使用)
+  // 度规标量场与 k 矢量(显式按位置求值,k 写入闭包供导数使用)。
+  // 结果写入复用的 out 对象:积分每步调用 3 次,避免每光子上万次小对象分配触发 GC。
+  const m = { r: 0, s: 0, f: 0, den: 0 };
   const metric = (P) => {
     const R2 = P.lengthSq();
     const inner = R2 - aL2;
@@ -29,18 +30,18 @@ function integratePhoton(roW, rdW, { spin, rs, escR, diskOut, maxSteps = 2600, r
     const r = Math.sqrt(Math.max(s, 1e-6));
     const den = Math.max(sq, 1e-4);
     const D = Math.max(s * s + aL2 * P.z * P.z, 1e-4);
-    const f = 2 * M * s * r / D * lensing;
+    m.r = r; m.s = s; m.den = den;
+    m.f = 2 * M * s * r / D * lensing;
     k.set((r * P.x + aL * P.y) / (s + aL2), (r * P.y - aL * P.x) / (s + aL2), P.z / r);
-    return { r, s, f, den };
   };
 
   // 初始协变动量:p_i = d_i + f·k_i(β + k·d),β 解自零性条件
-  let m0 = metric(X);
+  metric(X);
   const kd = k.dot(d0);
-  const S = Math.sqrt(Math.max(1 - m0.f * (1 - kd * kd), 0));
-  const beta = (m0.f * kd + S) / Math.max(1 - m0.f, 1e-3);
-  const pt = (m0.f - 1) * beta + m0.f * kd;
-  const p = d0.clone().addScaledVector(k, m0.f * (beta + kd));
+  const S = Math.sqrt(Math.max(1 - m.f * (1 - kd * kd), 0));
+  const beta = (m.f * kd + S) / Math.max(1 - m.f, 1e-3);
+  const pt = (m.f - 1) * beta + m.f * kd;
+  const p = d0.clone().addScaledVector(k, m.f * (beta + kd));
 
   // 斜率缓存
   const mkO = () => ({ dX: new THREE.Vector3(), dp: new THREE.Vector3(), dtL: 0, r: 0,
@@ -49,7 +50,8 @@ function integratePhoton(roW, rdW, { spin, rs, escR, diskOut, maxSteps = 2600, r
   const o = mkO(), o2 = mkO();
 
   const deriv = (Xp, p, out) => {
-    const { r, s, f, den } = metric(Xp);
+    metric(Xp);
+    const r = m.r, s = m.s, f = m.f, den = m.den;
     const X = Xp;
     const G = -pt + k.dot(p);
     // ∂r/∂X = (X·s, Y·s, Z·(s+a²)) / (den·r)
@@ -127,7 +129,7 @@ export class GeodesicLab {
   }
 
   // 从相机经屏幕点 (ndcX, ndcY) 发射一圈光子扇
-  launchFromCamera(ndcX, ndcY, { count = 21, spreadDeg = 0.9, spin = 0, rs = 2, diskOut = 22 } = {}) {
+  launchFromCamera(ndcX, ndcY, { count = 21, spreadDeg = 0.9, spin = 0, rs = 2, diskOut = 22, lensing = 1 } = {}) {
     const cam = this.camera;
     const tanF = Math.tan(cam.fov * Math.PI / 360);
     // cam.aspect 失效(初始化瞬间视口为 0)时兜底
@@ -150,7 +152,7 @@ export class GeodesicLab {
         .addScaledVector(e1, Math.tan(off) * Math.cos(ang))
         .addScaledVector(e2, Math.tan(off) * Math.sin(ang))
         .normalize();
-      const { pts, status } = integratePhoton(ro, rdJ, { spin, rs, escR, diskOut });
+      const { pts, status } = integratePhoton(ro, rdJ, { spin, rs, escR, diskOut, lensing });
       statuses[status] = (statuses[status] || 0) + 1;
       const n = pts.length / 3;
       const captured = status === 'captured';

@@ -34,6 +34,7 @@ export class AmbientAudio {
   }
 
   async enable() {
+    this.enabled = true; // 先置位(同步):调用方立即可读到意图状态
     try {
       await this._ensure();
       if (!this.src && this.buffer) {
@@ -43,13 +44,13 @@ export class AmbientAudio {
         this.src.connect(this.gain);
         this.src.start();
       }
-      this.enabled = true;
       const t = this.ctx.currentTime;
       this.gain.gain.cancelScheduledValues(t);
       this.gain.gain.setValueAtTime(this.gain.gain.value, t);
       this.gain.gain.linearRampToValueAtTime(0.5, t + 2.5);
       return true;
     } catch (e) {
+      this.enabled = false; // 失败回滚,避免 UI"假开"
       console.warn('[GARGANTUA] 音乐启用失败:', e && e.message);
       return false;
     }
@@ -64,9 +65,9 @@ export class AmbientAudio {
     this.gain.gain.linearRampToValueAtTime(0, t + 1.2);
   }
 
+  // 关 → 同步返回 false;开 → 返回 Promise<boolean>(最终是否成功)
   toggle() {
-    if (this.enabled) { this.disable(); return false; }
-    this.enable();
-    return true;
+    if (this.enabled) { this.disable(); return Promise.resolve(false); }
+    return this.enable();
   }
 }

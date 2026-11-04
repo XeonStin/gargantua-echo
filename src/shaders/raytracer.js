@@ -59,10 +59,8 @@ uniform vec2  uJitter;     // 亚像素抖动(纹素单位,长曝光时域超采
 uniform float uSpin;       // Kerr 自旋 a/M ∈ [0, 0.998]
 uniform float uJet;        // 相对论喷流强度(0 = 关)
 uniform float uVolDisk;    // 体积吸积盘开关(0 = 无穷薄穿越,1 = 体积积分)
-uniform float uRealStars;  // 真实星表星空开关(烘焙纹理)
 uniform sampler2D uBB;     // 黑体色 LUT(256×1,800K-30000K)
-uniform sampler2D uStars;  // 真实星空 equirect 纹理
-uniform vec3   uGalPole;   // 银道面法向(真实星表模式对齐真实银极)
+uniform vec3   uGalPole;   // 银道面法向(程序化银河取向)
 uniform sampler2D uDiskTex; // 吸积盘有机细节纹理(本地烘焙,可平铺)
 uniform float uFilm;       // 电影色调开关(0/1):盘面双色带 + 合成胶片曲线
 uniform float uRefColor;   // 参考配色开关(0/1):内缘白热 + 外缘橙褐
@@ -114,9 +112,6 @@ float fbm3(vec3 p) {
   s += 0.26 * vnoise(p);
   s += 0.13 * vnoise(p * 2.13 + vec3(11.3, 7.7, 5.1));
   return s * 1.071;
-}
-float fbm2(vec3 p) {
-  return (0.62 * vnoise(p) + 0.38 * vnoise(p * 2.13 + vec3(11.3, 7.7, 5.1))) * 1.13;
 }
 vec3 rotY(vec3 p, float a) {
   float c = cos(a), s = sin(a);
@@ -177,19 +172,10 @@ vec3 galaxy(vec3 rd) {
 
 vec3 skyColor(vec3 rd) {
   vec3 c = vec3(0.0);
-  if (uRealStars > 0.5) {
-    // 真实星表(启动时烘焙的 equirect HDR 图,单次纹理采样,比程序化三层恒星更便宜)
-    float u = atan(rd.z, rd.x) / 6.2831853 + 0.5;
-    float v = asin(clamp(rd.y, -1.0, 1.0)) / PI + 0.5;
-    c += texture2D(uStars, vec2(u, v)).rgb;
-    // 真实模式下银河带按真实银极取向,常会正对画面;压暗让星表当主角
-    c += galaxy(rd) * 0.55;
-  } else {
-    c += starLayer(rd, 26.0, min(0.16 * uStarDensity, 0.9), 1.15 * uStarBright, 0.055);
-    c += starLayer(rd, 74.0, min(0.30 * uStarDensity, 0.9), 0.55 * uStarBright, 0.045);
-    c += starLayer(rd, 185.0, min(0.34 * uStarDensity, 0.9), 0.30 * uStarBright, 0.040);
-    c += galaxy(rd);
-  }
+  c += starLayer(rd, 26.0, min(0.16 * uStarDensity, 0.9), 1.15 * uStarBright, 0.055);
+  c += starLayer(rd, 74.0, min(0.30 * uStarDensity, 0.9), 0.55 * uStarBright, 0.045);
+  c += starLayer(rd, 185.0, min(0.34 * uStarDensity, 0.9), 0.30 * uStarBright, 0.040);
+  c += galaxy(rd);
   c += vec3(0.0012, 0.0014, 0.0021); // 深空底光,防死黑
   return c;
 }
@@ -244,22 +230,8 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
   float rg01 = clamp((r - uDiskIn) / max(uDiskOut - uDiskIn, 0.001), 0.0, 1.0);
   float rimT = 1.0 - rg01; // 1 = 紧贴内缘
 
-  // --- 轨道速度(LNRF 局部静止观者测得;Bardeen 公式,自旋 0 时退化为 √(M/(r−2M))) ---
-  float MM = uRs * 0.5;
-  float rt = r / MM;                                     // r̃ = r/M
-  float dlt = max(rt * rt - 2.0 * rt + uSpin * uSpin, 1e-4); // Δ̃
-  float vOrb = (rt * rt - 2.0 * uSpin * sqrt(max(rt, 0.0)) + uSpin * uSpin)
-             / (sqrt(dlt) * (pow(rt, 1.5) + uSpin));
-  float beta = min(abs(vOrb), 0.985);
-  vec3 tangent = vec3(-hp.z, 0.0, hp.x) / max(length(hp.xz), 1e-4); // 顺行(绕 +y)
-  float gamma = inversesqrt(max(1.0 - beta * beta, 1e-3));
-  vec3 nhat = -vdir; // 光子朝向相机方向的单位矢量
-  float gDop = 1.0 / (gamma * (1.0 - beta * dot(tangent, nhat)));
-  gDop = clamp(gDop, 0.25, 4.0);
-  float gGrav = pow(clamp(sqrt(max(1.0 - uRs / r, 0.0)), 0.02, 1.0), uGravShift);
-  float gTot = gDop * gGrav;
-
   // --- 湍流:刚性旋转 + 有界差速剪切(双相位混合防无限剪切) ---
+  float MM = uRs * 0.5;
   float t = tNow;
   float Omega;
   if (uSpin > 0.001) {
@@ -287,7 +259,6 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
   vec3 pr = rotY(hp, -OmegaRef * t);
   vec3 pA = rotY(pr, -diff * f1 * P);
   vec3 pB = rotY(pr, -diff * f2 * P);
-  float n = mix(fbm4(pB * uTurbScale), fbm4(pA * uTurbScale), wA);
 
   // --- 丝状气体层:大尺度各向异性柱坐标 + 域扭曲 + 乘积八度 ---
   // (尺度必须够大:此前直接用 pd(=位置×2.2)采噪声,特征尺寸 ~0.45M,
@@ -297,7 +268,9 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
   vec2 rh = pu.xz / max(puR, 1e-4);
   vec2 thv = vec2(-rh.y, rh.x);
   // 切向 ×0.50 → 沿弧拉长;垂直 ×4.2 → 盘面上下有细层理
-  vec3 q = pu * 3.20;   // 直角坐标 3D 噪声:等值面是团块,不会形成放射状辐条
+  // 湍流尺度:默认 3.0 → 因子精确归 1.0,q 与旧配方逐位一致;其余值缩放丝缕频率。
+  // 直角坐标 3D 噪声:等值面是团块,不会形成放射状辐条
+  vec3 q = pu * 3.20 * (uTurbScale * 0.33333334);
   // 双尺度域扭曲:慢变让丝缕整体弯折,快变打散"直毛发"式的规则径向纹
   float dw = vnoise(q * 0.42 + vec3(11.3, 4.7, 8.1));
   q += vec3(dw * 1.3 - 0.65, dw * 2.4 - 1.2, dw * 1.0 - 0.5);
@@ -323,9 +296,6 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
     float f2 = vnoise(fq * 2.13 + vec3(4.7, 8.3, 1.9)) * 0.5 + 0.5;
     fineMul = mix(0.20, 1.75, smoothstep(0.30, 0.78, f1 * f2));
   }
-  n = mix(n, n * (0.10 + 2.60 * filN), 0.90);
-
-  n = clamp(n * n * 2.1, 0.0, 1.35); // 对比度(限幅防过曝)
 
   // --- 有机细节纹理:按 (θ, r) 采样;θ 用整数重复 + RepeatWrapping → 无接缝 ---
   // 参考配方:pow(,2)*4 对比增强;这里同时作用在密度与发光上 → 外盘被打散成稀疏尘带
@@ -343,6 +313,21 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
             * (0.55 + 0.45 * clamp(uTurb, 0.0, 1.0)) * fineMul;
   if (cov < 0.002) return vec4(0.0);
   float alpha = clamp(cov * (1.0 + 2.0 * uDiskSoft) * 3.0, 0.0, 1.0);
+
+  // --- 轨道速度(LNRF 局部静止观者测得;Bardeen 公式,自旋 0 时退化为 √(M/(r−2M))) ---
+  // 推迟到 cov 通过之后:被尘埃带剔除的样本不再白算 sqrt/pow/inversesqrt
+  float rt = r / MM;                                     // r̃ = r/M
+  float dlt = max(rt * rt - 2.0 * rt + uSpin * uSpin, 1e-4); // Δ̃
+  float vOrb = (rt * rt - 2.0 * uSpin * sqrt(max(rt, 0.0)) + uSpin * uSpin)
+             / (sqrt(dlt) * (pow(rt, 1.5) + uSpin));
+  float beta = min(abs(vOrb), 0.985);
+  vec3 tangent = vec3(-hp.z, 0.0, hp.x) / max(length(hp.xz), 1e-4); // 顺行(绕 +y)
+  float gamma = inversesqrt(max(1.0 - beta * beta, 1e-3));
+  vec3 nhat = -vdir; // 光子朝向相机方向的单位矢量
+  float gDop = 1.0 / (gamma * (1.0 - beta * dot(tangent, nhat)));
+  gDop = clamp(gDop, 0.25, 4.0);
+  float gGrav = pow(clamp(sqrt(max(1.0 - uRs / r, 0.0)), 0.02, 1.0), uGravShift);
+  float gTot = gDop * gGrav;
 
   // 温度/多普勒(物理色)
   float T = uDiskTemp * pow(uDiskIn / r, 0.75);
@@ -428,6 +413,7 @@ void main() {
   float dbgGrav = 1.0;
   float dbgT = 0.0;
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
+  float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
 
   // 初始加速度(弯曲常数每像素提出循环)
   float k = -1.5 * uRs * uLensing * h2;
@@ -445,11 +431,20 @@ void main() {
     float dt = clamp(0.16 * (r - uRs * 0.9), 0.028, 3.2)
              * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
-      dt *= 0.28; // 体积盘模式:盘区加密采样
-      // 贴近盘面时按当地半厚再加密:外缘薄刃不再被大体积元一口吞掉
-      if (r > uDiskIn * 0.8) {
-        float hh = diskHalfHeight(r);
-        if (abs(pos.y) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
+      // 薄层门控:加密只花在可能触到盘面薄层的光线上。|y| 远在薄层之外(且一个粗步长
+      // 内也够不到)的段保持与薄盘模式一致的步长 —— 盘区 ×0.28 的 3.6 倍步数是体积
+      // 模式帧耗大头;垂直采样截止(×5 半厚)+ 中面噪声偏移之外的段对画面零贡献。
+      // hMax 与 diskHalfHeight 的剖面常数保持同源(0.090 + 0.30·uDiskSoft, ×1.55, wv≤1.5)。
+      float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1)
+      float gate = 5.0 * hMax + 1.2;                        // 采样截止 + 中面噪声偏移裕量
+      float ay = abs(pos.y);
+      if (ay < gate || ay - gate < abs(vel.y) * dt) {
+        dt *= 0.28; // 体积盘模式:盘区加密采样
+        // 贴近盘面时按当地半厚再加密:外缘薄刃不再被大体积元一口吞掉
+        if (r > uDiskIn * 0.8) {
+          float hh = diskHalfHeight(r);
+          if (abs(pos.y) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
+        }
       }
     }
     float halfDt2 = 0.5 * dt * dt;
@@ -468,13 +463,13 @@ void main() {
 
     if (!skyOnly && trans > 0.004) {
       if (uVolDisk > 0.5) {
-        // 体积吸积盘:段内 3 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
-        float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3));
+        // 体积吸积盘:段内 4 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
         vec3 mid = mix(pos, npos, 0.5);
         float mr = diskRadius(mid);
         if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0) {
           float segLen = length(npos - pos);
           vec3 vDir = normalize(nvel); // 提出子采样循环
+          float ev = segLen * 0.125;   // 段积分权重(与子采样数同源,提出循环)
           for (int s = 0; s < 4; s++) {
             vec3 sp = mix(pos, npos, (float(s) + pixPh) * 0.25);
             float sr = diskRadius(sp);
@@ -482,7 +477,6 @@ void main() {
             float sH = diskHalfHeight(sr); // 半厚(内厚外薄,与 diskShade 同源)
             if (abs(sp.y) >= sH * 5.0) continue;
             vec4 dsk = diskShade(sp, vDir, uTime, 0.0);
-            float ev = segLen * 0.125;
             // 吸收系数单独加大:让盘在视线进入后的前一小段就变不透明,
             // 否则掠射时会积完整条 15M 路径,细结构全被平均
             float av = clamp(dsk.a * ev, 0.0, 1.0);
@@ -498,16 +492,6 @@ void main() {
             pos = npos; vel = nvel; acc = nacc; r2 = nr2; r = nr;
             stepsUsed += 1.0;
             hitType = 3; break;
-          }
-        }
-        // 盘面表层:在 y=0 交点补一次采样,保住体积积分会平均掉的细结构
-        if (uVolDisk > 1.5 && pos.y * npos.y < 0.0) {
-          float ft = pos.y / (pos.y - npos.y);
-          vec3 hp = mix(pos, npos, ft);
-          float hr = diskRadius(hp);
-          if (hr > uDiskIn * 0.82 && hr < uDiskOut) {
-            vec4 ds = diskShade(hp, normalize(nvel), uTime, 1.0);
-            col += trans * ds.rgb * ds.a * 0.80;
           }
         }
       } else if (pos.y * npos.y < 0.0) {
@@ -667,6 +651,7 @@ void main() {
   float dbgGrav = 1.0;
   float dbgT = 0.0;
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
+  float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
 
   vec3 dX1 = vec3(0.0), dp1 = vec3(0.0), dX2 = vec3(0.0), dp2 = vec3(0.0);
   float dtL1 = 0.0, dtL2 = 0.0, r = r0;
@@ -681,10 +666,17 @@ void main() {
     float dt = clamp(0.16 * (r - rH * 0.9), 0.028, 3.2)
              * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
-      dt *= 0.28;
-      if (r > uDiskIn * 0.8) { // KS 坐标里世界 y = X.z
-        float hh = diskHalfHeight(r);
-        if (abs(X.z) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
+      // 薄层门控(与 Verlet 路径同源):|世界 y|=|X.z| 远离盘面薄层的段不加密。
+      // 世界 y 方向速度 = KS 的 dX1.z(世界 y = KS Z)。
+      float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1)
+      float gate = 5.0 * hMax + 1.2;                        // 采样截止 + 中面噪声偏移裕量
+      float ay = abs(X.z);
+      if (ay < gate || ay - gate < abs(dX1.z) * dt) {
+        dt *= 0.28;
+        if (r > uDiskIn * 0.8) { // KS 坐标里世界 y = X.z
+          float hh = diskHalfHeight(r);
+          if (abs(X.z) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
+        }
       }
     }
     float hdt = 0.5 * dt;
@@ -707,11 +699,11 @@ void main() {
 
     if (!skyOnly && trans > 0.004) {
       if (uVolDisk > 0.5) {
-        // 体积吸积盘:段内 3 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
-        float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3));
+        // 体积吸积盘:段内 4 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
         float mr = diskRadius(midW);
         if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0) {
           vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
+          float ev = segLen * 0.125; // 段积分权重(与子采样数同源,提出循环)
           for (int s = 0; s < 4; s++) {
             vec3 spKS = mix(X, nX, (float(s) + pixPh) * 0.25);
             vec3 spW = vec3(spKS.x, spKS.z, -spKS.y);
@@ -720,7 +712,6 @@ void main() {
             float sH = diskHalfHeight(sr);
             if (abs(spW.y) >= sH * 5.0) continue;
             vec4 dsk = diskShade(spW, vW, uTime, 0.0);
-            float ev = segLen * 0.125;
             float av = clamp(dsk.a * ev, 0.0, 1.0);
             col += trans * dsk.rgb * ev;
             trans *= 1.0 - av;
@@ -734,16 +725,6 @@ void main() {
             X = nX; p = np;
             stepsUsed += 1.0;
             hitType = 3; break;
-          }
-        }
-        if (uVolDisk > 1.5 && X.z * nX.z < 0.0) {
-          float ft = X.z / (X.z - nX.z);
-          vec3 hpW = vec3(mix(X.x, nX.x, ft), mix(X.z, nX.z, ft), -mix(X.y, nX.y, ft));
-          float hr = diskRadius(hpW);
-          if (hr > uDiskIn * 0.82 && hr < uDiskOut) {
-            vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
-            vec4 ds = diskShade(hpW, vW, uTime, 1.0);
-            col += trans * ds.rgb * ds.a * 0.80;
           }
         }
       } else if (X.z * nX.z < 0.0) {

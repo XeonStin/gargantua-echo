@@ -50,20 +50,19 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 
 ## 24 项参数
 
-相机:视场角 FOV(25–110°,默认 55°)  
+相机:视场角 FOV(25–110°,默认 57.5°)  
 吸积盘:盘内半径、盘外半径、盘厚软硬、盘亮度、峰值温度 K、自转速率、湍流强度、湍流尺度  
 相对论:**自旋 a/M(0–0.998)**、**相对论喷流**、多普勒增亮、多普勒色移、引力红移、透镜强度  
 星空:恒星密度、恒星亮度、银河亮度  
 后期:泛光强度、泛光阈值、曝光、暗角、胶片颗粒、色散
 
-盘内半径不得低于 ISCO:任何设置/分享码/自旋变化都会自动钳到 ISCO(自旋 0 → 6M,a=0.318 → 4.91M)。自旋 > 0 时:盘内半径自动跟随 ISCO(a=0.9 → 2.32M)内移;手动改过盘内半径则不再自动跟随。
+盘内半径不得低于 ISCO:任何设置/分享码/自旋变化都会自动钳到 ISCO(自旋 0 → 6M,a=0.318 → 4.91M)。自旋 > 0 时:盘内半径自动跟随 ISCO(a=0.9 → 2.32M)内移;手动改过或显式 URL 给出(`?diskInner=`)则不再自动跟随,**但 ISCO 物理下限钳制始终生效**(低于 ISCO 的显式值会抬回 ISCO,更大的值不会被重置)。
 
 ## 面板工具开关(参数面板顶部)
 
 | 开关 | 说明 |
 | --- | --- |
-| **体积盘** | 薄面穿越 → 体积积分(盘有真实厚度与自遮挡;盘区步长加密,帧耗约 ×2.2) |
-| **真实星空** | 耶鲁亮星星表 2068 颗(Vmag ≤ 5.2)+ 程序化暗星,启动烘焙成 equirect HDR 纹理。**运行时只是一次纹理采样,比程序化星空更便宜**;银道面对齐真实银极,透镜把亮星拉成弧 |
+| **体积盘** | 薄面穿越 → 体积积分(盘有真实厚度与自遮挡)。九轮起采用**薄层门控**:只有接近盘面薄层的光线才加密步长,远处穿盘区的光线保持常规步长——体积模式额外帧耗约减半,观感不变 |
 | **参考配色** | 盘面改用参考项目的调色:内缘纯白 → 外缘橙褐;关闭时用物理黑体 + 多普勒色移 |
 | **电影色调** | 默认开。盘面:乘积八度丝状气体层 + 本地烘焙有机细节纹理 + 内缘白热环 + 双乘法色带(内蓝白→外深橙);合成:胶片 S 曲线 + 通道 gamma 暖偏 + 暗部轻抬。关掉即回到纯 ACES 观感 |
 | **标注** | 阴影/光子环(b_c = √27·M)、视界 r+、ISCO 的理论位置投影(SVG) |
@@ -75,9 +74,10 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 
 ## 画质档
 
-- **标准**:0.62× 内部分辨率,128 积分步,4 级 Bloom(移动端默认)
-- **高**:0.85×,192 步,5 级 Bloom(默认)
-- **电影**:1.0×,320 步,6 级 Bloom
+- **标准**:DPR 上限 1.5,128 积分步,4 级 Bloom(移动端默认)
+- **高**:DPR 上限 2.0,192 步,5 级 Bloom(默认)
+- **电影**:DPR 上限 2.0,320 步,6 级 Bloom(桌面默认)
+- 三档均以原生 CSS 分辨率 × DPR 渲染,帧耗过高时自适应动态分辨率自动下调(下限 0.45×)
 - **帧率限制**:面板内可选 不限/30/60/90/120/144/165(令牌桶节流,跳过帧不推进时间)
 - **长曝光**:后期分组开关 + 曝光帧数滑杆(2–64)。帧累积(EMA,RGBA16F 单缓冲 alpha 混合)。
   **开启时每帧自动做亚像素抖动(Halton 序列)——帧累积顺带完成时域超采样抗锯齿**;
@@ -97,8 +97,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 2. **吸积盘**:零扭矩辐射通量 `F ∝ r⁻³(1-√(r_in/r))`,温度 `T ∝ r^(-3/4)`,黑体配色
    (256 项 LUT);湍流 = 刚体旋转 + 有界差速剪切 + FBM;体积模式下按路径长度加权积分。
 3. **喷流**:沿自旋轴的准直锥,蓝白同步辐射色 + 螺旋 FBM 湍流,发射型路径积分,天然被透镜弯曲。
-4. **星空/银河**:方向网格哈希三层恒星 + 银道带 FBM 云尘(真实星空模式下换成烘焙星表纹理,
-   银极对齐 IAU J2000)。
+4. **星空/银河**:方向网格哈希三层恒星 + 银道带 FBM 云尘。
 5. **Bloom**:软阈值亮通 → 半分辨率金字塔 → 帐篷上采样(0.72 衰减)。
 6. **合成**:径向色散 → Bloom → 曝光 → ACES → 伽马 → 暗角 → 颗粒(EHT 模式在此分支)。
    HDR 全程 RGBA16F。
@@ -116,7 +115,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `?le=0/1` / `?lef=N` | 长曝光开关 / 曝光帧数 |
 | `?exp=screen/4k/8k` | 截图导出分辨率 |
 | `?fov=25..110` | 初始视场角 |
-| `?vol=1` / `?stars=1` / `?anno=1` / `?eht=1` / `?film=0/1` / `?refcolor=0/1` | 体积盘 / 真实星空 / 标注 / EHT / 电影色调 / 参考配色 |
+| `?vol=1` / `?anno=1` / `?eht=1` / `?film=0/1` / `?refcolor=0/1` | 体积盘 / 标注 / EHT / 电影色调 / 参考配色 |
 | `?flyb=2.01..3.0` | 自由飞行安全边界(米制 M;越小时间膨胀越强) |
 | `?tour=1` | 自动开始导览 |
 | `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**) |
@@ -129,7 +128,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.0.0):
+**JS API**(`window.gargantua` v2.1.0):
 
 ```js
 gargantua.ready / info()
@@ -137,7 +136,7 @@ gargantua.setParam(k,v) / setParams(obj) / getParams()
 gargantua.setView(0..9) / setQuality(q) / setPreset(0..3) / setCine(b) / setSeed(n)
 gargantua.setFpsCap(0|30|60|90|120|144|165) / setExportSize('screen'|'4k'|'8k')
 gargantua.setLongExposure(b) / setExposureFrames(2..64)
-gargantua.setVolDisk(b) / setRealStars(b) / setAnnotations(b) / setEHT(b) / setFilmGrade(b) / setRefColor(b) / setWatermark(b)
+gargantua.setVolDisk(b) / setAnnotations(b) / setEHT(b) / setFilmGrade(b) / setRefColor(b) / setWatermark(b)
 gargantua.setTour(b) / setPhoto(b) / setGeoArm(b) / launchPhoton(ndcX, ndcY)
 gargantua.share()                    // 生成分享链接
 gargantua.applyShareCode('...')      // 导入分享码
@@ -155,8 +154,8 @@ window.__LAST_EXPORT__ / window.__GARGANTUA_ERRORS__
 | 默认(Schwarzschild)远景全景(最重) | **4.49** | 1.86× 余量(≈223fps) |
 | 默认近界掠行 | 4.29 | 达标 |
 | Kerr a=0.9 | 8.79 | 达标(≈114fps) |
-| 体积盘 | 9.75 | 略超,建议高/标准档 |
-| 真实星空 | 4.27(比程序化还快) | 达标 |
+| 体积盘(九轮薄层门控前) | 9.75 | 略超,建议高/标准档 |
+| 体积盘(九轮薄层门控后) | 体积额外开销约减半(A/B 同环境实测 −34%) | 达标 |
 | EHT / 长曝光16+TAA | 4.52 / 4.70 | 达标 |
 | Kerr+喷流 | 9.47 | 略超,建议高/标准档 |
 
@@ -185,7 +184,6 @@ gargantua-echo/
 │   ├── tour.js           # 7 站中文导览(相机飞行 + 字幕)
 │   ├── photomode.js      # 胶片风格预设 / 构图线 / 水印文本
 │   ├── sharecode.js      # 参数分享码(base64url)
-│   ├── stars.js          # 亮星星表 → equirect HDR 纹理烘焙
 │   ├── disktex.js        # 吸积盘有机细节纹理(本地程序化烘焙,可平铺)
 │   ├── audio.js          # WebAudio 氛围音乐(淡入淡出)
 │   ├── capture.js        # 截图自动化(隐藏标签页安全)
@@ -193,16 +191,14 @@ gargantua-echo/
 │       ├── raytracer.js  # Schwarzschild Verlet + Kerr-Schild 哈密顿双路径 Fragment Shader
 │       └── post.js       # Bloom + ACES 合成(+ EHT 模式)
 ├── assets/
-│   ├── audio/ambient-drone.wav     # 生成的氛围音乐(32s 无缝循环)
-│   └── data/bright-stars.js        # 耶鲁亮星星表子集(2068 颗,tools/gen_stars.py 生成)
-├── tools/gen_stars.py    # 星表生成脚本(可复现)
+│   └── audio/ambient-drone.wav     # 生成的氛围音乐(32s 无缝循环)
 └── TESTREPORT.md         # 测试结果与证据
 ```
 
 ## 错误恢复
 
-- WebGL 2 不可用 / 创建失败 → 覆盖层提示 + 「安全模式」「重试」按钮
-- 着色器编译失败(`renderer.debug.onShaderError`)→ 覆盖层 + 安全模式入口
+- WebGL 2 不可用 / 创建失败 → 覆盖层提示 + 「安全模式」「重试」按钮(内联脚本接线,模块加载失败时依然可点)
+- 着色器编译失败(`renderer.debug.onShaderError`)→ 覆盖层 + 安全模式入口(`?safemode=1` 重载)
 - `webglcontextlost/restored` → 等待并自动重建资源(已用 `WEBGL_lose_context` 实测)
-- 隐藏标签页 rAF 挂起 → 主循环自动降级 `setTimeout` 驱动,截图接口不受影响
+- 隐藏标签页 rAF 挂起 → 自动化场景(`?snap=` / webdriver)降级 `setTimeout` 驱动;普通用户切后台循环完全停止
 - 飞行模式 pointer lock 被拒 → 自动回退拖拽环视

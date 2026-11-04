@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-04（七轮：参考项目盘面配方升级完成后；同日部署至 GitHub Pages）
+> 最后更新：2026-11-05（九轮：代码审查修复 + 真实星空移除 + 体积盘薄层门控优化）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.0.0'`，24 参数，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.1.0'`，24 参数，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -37,15 +37,12 @@ gargantua-echo/
 │   ├── tour.js           # 7 站中文导览
 │   ├── photomode.js      # 胶片风格预设 / 构图线 / 水印文本
 │   ├── sharecode.js      # 参数分享码（base64url ?s=）
-│   ├── stars.js          # 耶鲁亮星表 → equirect HDR 纹理烘焙
 │   ├── disktex.js        # 吸积盘有机细节纹理（本地可平铺 FBM 烘焙）
 │   ├── audio.js / capture.js
 │   └── shaders/
 │       ├── raytracer.js  # COMMON + SCHW_MAIN + KERR_MAIN（双 program）
 │       └── post.js       # Bloom 金字塔 + ACES 合成（含 EHT / 电影色调分支）
-├── assets/data/bright-stars.js   # 2068 颗（tools/gen_stars.py 生成）
 ├── assets/audio/ambient-drone.wav
-├── tools/gen_stars.py
 ├── README.md / TESTREPORT.md / HANDOFF.md
 ```
 
@@ -79,20 +76,23 @@ gargantua-echo/
 
 - **模式**：cine（电影循环）/ orbit / fly（G；WASD+R/F+滚轮；安全边界可调 2.01–3.0M）
 - **24 参数**：fov、盘 8 项、相对论 6 项（**spin / jetPower** 等）、星空 3、后期 6
-- **开关**（面板工具行，`TOGGLE_IDS` 映射）：体积盘 / 真实星空 / 电影色调（默认开）/ 标注 / EHT / 水印 / 弹弓
+- **开关**（面板工具行，`TOGGLE_IDS` 映射）：体积盘 / 电影色调（默认开）/ 标注 / EHT / 水印 / 弹弓
 - **HUD 按钮**：循环 / 飞行 / 导览 / 摄影 / 音乐 / 截图 / 画质 / 参数
 - **快捷键**：Space/O/C/G、Shift+1-4、0-9、P/H/M/S/V/T/E/N、R/Shift+R、F、Q
 - **其他**：导览 7 站（T）、摄影模式（V，胶片预设/构图线/水印）、成就 13 项、分享码（?s=）、
   时间膨胀显示、自旋自动跟 ISCO、Kerr 喷流、4K/8K 导出（屏幕/4K/8K）
+- （九轮移除：真实星空/耶鲁星表烘焙——观感不佳，`src/stars.js`、`assets/data/bright-stars.js`、
+  `tools/gen_stars.py` 已删除；`?stars=` 与 `setRealStars` API 不复存在，旧分享码的 `t.rs` 字段被忽略）
 
 ## 5. URL / API 速查
 
-URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?exp ?fov ?vol ?stars ?anno ?eht ?film ?flyb ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`
+URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?exp ?fov ?vol ?anno ?eht ?film ?refcolor ?flyb ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`（`?stars` 已随真实星空移除）
 
 API：`setParam/setParams/getParams、setView/setQuality/setPreset/setCine/setSeed、setFpsCap/setExportSize、
-setLongExposure/setExposureFrames、setVolDisk/setRealStars/setAnnotations/setEHT/setFilmGrade/setWatermark、
+setLongExposure/setExposureFrames、setVolDisk/setAnnotations/setEHT/setFilmGrade/setRefColor/setWatermark、
 setTour/setPhoto/setGeoArm/launchPhoton、setFlyBoundary、share/applyShareCode、renderFrames/renderOne/benchmark、
 screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、`window.__GARGANTUA_ERRORS__`。
+（`setRealStars` 已移除）
 
 ## 6. 历轮变更摘要
 
@@ -141,15 +141,44 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
   真实星空 4.27、EHT 4.52、LE16+TAA 4.70、Kerr+喷流 9.47；720p 重场景 1.4–3.3ms。
 - 七轮增量：盘面着色（含全部新配方）2K ≈ **0.7ms**、720p ≈ 0.24ms；胶片曲线 2K ≈ 0.9ms → 健康基线约 **5.2ms@2K**。
 - 目标：2K 120fps（8.33ms）达标；体积盘/Kerr+喷流在 2K 略超建议高/标准档；1K 60fps 全部有 5× 余量。
+- 九轮薄层门控后：体积模式额外开销约减半（同环境 A/B −34%），2K 体积盘预计回到达标区间（原生 2K 复测待做）。
 
-## 9. 待办 / 可选方向（均未开始，等用户指令）
+## 9. 九轮（代码审查修复 + 优化，2026-11-05）
+
+**审查发现并全修的问题**：
+- **P1 盘内半径存档丢失**：初始化无条件把 diskInner 赋值为 ISCO（注释声称"未显式给盘内半径时"但实现没有判断）→ 用户调大值和显式 URL 每次刷新被重置。现改为**只抬不压**（保留 ≥ISCO 的现值），显式 URL 跳过自动跟随但保留 ISCO 物理下限钳制。
+- **P1 错误恢复按钮未接线**：覆盖层「安全模式/重试」从未绑定事件 → index.html 尾部内联脚本接线（模块加载失败时依然可用；安全模式 = `?safemode=1` 重载，重试 = reload）。
+- **P2 体积盘表层补采样死分支**：`uVolDisk > 1.5` 永不可达（setVolDisk 只写 0/1）→ 按用户决定**删除**（观感保持现状）。
+- **P2 弹弓忽略透镜强度**：geodesic.js 硬编码 lensing=1 → 现从 `state.params.lensing` 透传。
+- **P2 分享码相机数组未校验**：`obj.c` 元素非数值会让 NaN 传播进测地线 → 加 `every(isFinite)` 校验。
+- 其余：setFilmGrade 混入行删除、QUALITIES.scale 死字段删除、标注 Kerr 口径注明、音乐 toggle 异步化（enable 失败不再"假开"）、`hdrFloat=false` 时 RT 降级 8 位、隐藏标签页 setTimeout 循环仅在自动化场景（?snap=/webdriver）启用、文档漂移（22→24 参数等）。
+
+**真实星空移除**（用户决定：效果不佳）：shader `uRealStars/uStars`、engine `setRealStars/setStarsTexture/setGalPole`、state/ui/main/sharecode 全链路 + 资产 + 生成工具。程序化星空为唯一星空。
+
+**体积盘薄层门控（主优化）**：
+- 实测发现体积模式帧耗大头是**盘区步长 ×0.28 的 3.6 倍积分步数**（view0≈view9、vol1/vol0=3.6× 均印证；着色 ALU 占比可忽略）。
+- 修复：盘区加密加**薄层门控**——`|y| < gate(=5×最大半厚+1.2) 或一个粗步长内能到达` 才 ×0.28；远离薄层的光线保持与薄盘模式一致步长。门控常数与 diskHalfHeight 剖面同源（0.090+0.30·uDiskSoft, ×1.55, wv≤1.5, 采样截止 ×5 半厚）。
+- **同环境 A/B 实测（IAB 1600×900，readPixels 强同步）**：默认 cine 视角 vol1 **−34%**（55.9→36.7ms）、极区俯瞰 **−19%**（21.8→17.7ms）、vol0 对照组 −1%（噪声，证明收益来自门控）；体积模式额外开销（vol1−vol0）从 40.1ms 降到 21.1ms，**砍半**。
+- 观感验证：薄盘路径与原版**逐字节一致**（FNV 哈希 35ea26cb 三明治复现）；体积模式块均值网格 maxDiff=2/255、meanDiff=0.042（采样相位微移，肉眼不可见），截图目视一致。
+
+**其他 shader 改动**（均逐位验证无输出变化）：
+- 删除死湍流场 `n`（双相位 fbm4×2，第 8 轮 coverage 模型后无消费者——编译器此前已 DCE，源码层面清理）；
+- **「湍流尺度」滑杆重新接线**：`q = pu * 3.20 * (uTurbScale * 0.33333334)`——默认 3.0 时因子精确归 1.0（同环境哈希逐位一致验证过；注意**不能用三元 select 形式**，ANGLE/D3D11 下 select 竟然改变像素）；
+- Doppler/轨道速度块推迟到 cov 早退之后（被尘埃带剔除的样本不再白算 sqrt/pow）；pixPh/ev 提升出循环；死分支 fbm2 删除。
+
+**测试方法论教训（重要）**：
+- **跨环境的截图字节哈希不可比**——同一份代码隔夜哈希不同（IAB 缩放/驱动状态漂移，块均值网格也可能 ±1-2）。A/B 必须同环境分钟级内完成（git stash 三明治法：stash→测原版→pop→测改版→可再 stash 复验）。
+- IAB 页内 setTimeout 节流程度随会话波动（昨天 1-2s 跑完的轮询基准今天 >2.5min）→ 长基准改用**单次同步 evaluate**（20 帧热身 + 30 帧实测 ≈ 2.8s，卡 3s evaluate 上限内）。
+- 本会话 IAB 环境帧耗比历史会话慢 ~1.6-3.6×（35→56ms 漂移），绝对值只在本环境内可比。
+
+## 10. 待办 / 可选方向（均未开始，等用户指令）
 
 - 暂缓：双黑洞并合（含 LIGO chirp）、WebXR（无硬件不可验，不盲发）。
 - 候选：视频导出（WebCodecs）、相机关键帧编辑器、分屏对比滑块、多普勒声效、hover 星表识别、
   倾斜盘+进动、引力波模式、TDE 场景、双语 i18n、PWA、课堂模式、参数画廊。
 - 未决小项：无。当前构建干净、0 错误。
 
-## 10. 八轮(参考配方盘面重写,2026-11-04)
+## 11. 八轮(参考配方盘面重写,2026-11-04)
 
 - **盘面模型换成参考项目做法**:`coverage = pow(1-rg,1.35) × 垂直锥 × 6 层乘积噪声 × 有机纹理 × 内密外疏`,`dustGlow=1/(rg²·120+0.02)` 内缘白热 + `vGlow=1/(y²·45+0.01)` 垂直光晕;旧的等值面密度/伪光影/独立 rimGlow 已移除。
 - **体积模式**:恢复 4 子采样 + 逐像素相位抖动(单采样会出同心圆壳,固定相位会出竖条纹),亮度系数按 readPixels 实测配平到 2.20(俯视 volOn/volOff ≈ 0.95)。
@@ -160,10 +189,11 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 - **默认值**更新为分享场景:FOV 57.5、cinematic、体积盘开、参考配色开、内径 4.91、外径 16.5、厚 0.31、自旋 0.318、曝光 0.53、暗角 0.48、颗粒 0.045、色散 0.3、泛光 0.04。
 - 已知遗留:体积模式亮度随视线路径长度变化,俯视配平、侧视略亮(真实体积的固有特性);`dopplerBeaming` 现为物理值 1.0。
 
-## 11. 文档索引
+## 12. 文档索引
 
 - `AGENTS.md`：常驻工作约定（自动加载）——启动命令、硬约束、验收流程，开工先读。
+- `TESTREPORT.md` 第 12 节：七轮（参考配方升级）验证；第 11 节已知环境限制。
 - `README.md`：用法/参数/开关/URL/API/性能/目录/错误恢复。
-- `TESTREPORT.md`：第 1–10 节历轮证据；**第 12 节 = 七轮（参考配方升级）验证**；第 11 节已知环境限制。
+- `TESTREPORT.md`：历轮证据；**末节 = 九轮（审查修复 + 薄层门控）验证**；含已知环境限制。
 - 记忆文件：`~/.zcode/cli/memories/projects/ai-playground-9dcf04bbe96961ed/memory/gargantua-53f-project.md`
   （含历轮技术要点与测试坑，MEMORY.md 有索引行）。
