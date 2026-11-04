@@ -12,6 +12,11 @@
 没有任何贴图/视频/截图**。原生 HTML/CSS/JavaScript + ES Modules + 本地 Three.js r170
 (vendor 内置),零构建,任何静态服务器可直接运行。
 
+## 在线版
+
+- 线上地址：<https://xeonstin.github.io/>
+- 源仓库：<https://github.com/XeonStin/xeonstin.github.io>（GitHub Pages 从 `master` 根目录直接发布，纯静态、无需构建）
+
 ## 启动
 
 ```bash

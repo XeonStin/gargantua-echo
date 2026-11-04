@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-04（七轮：参考项目盘面配方升级完成后）
+> 最后更新：2026-11-04（七轮：参考项目盘面配方升级完成后；同日部署至 GitHub Pages）
 
 ---
 
@@ -10,6 +10,7 @@
 | 项 | 值 |
 |---|---|
 | 路径 | `C:\Users\HJF\Desktop\AI-playground\gargantua-echo\` |
+| 线上 | <https://xeonstin.github.io/> —— 仓库 `XeonStin/xeonstin.github.io`（`master` 根目录，HTTPS 强推替换 2016 旧站；旧站备份在 `..\_backups\xeonstin.github.io-2016`） |
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
