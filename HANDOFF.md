@@ -10,7 +10,7 @@
 | 项 | 值 |
 |---|---|
 | 路径 | `C:\Users\HJF\Desktop\AI-playground\gargantua-echo\` |
-| 线上 | <https://xeonstin.github.io/> —— 仓库 `XeonStin/xeonstin.github.io`（`master` 根目录，HTTPS 强推替换 2016 旧站；旧站备份在 `..\_backups\xeonstin.github.io-2016`） |
+| 线上 | <https://xeonstin.github.io/gargantua-echo/> —— 仓库 `XeonStin/gargantua-echo`（原名 `xeonstin.github.io`，2026-11-04 改名后从用户站变为项目站，`master` 根目录发布到子路径 `/gargantua-echo/`；全站相对路径无需改动。旧 2016 站备份在 `..\_backups\xeonstin.github.io-2016`） |
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |

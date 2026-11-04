@@ -14,8 +14,8 @@
 
 ## 在线版
 
-- 线上地址：<https://xeonstin.github.io/>
-- 源仓库：<https://github.com/XeonStin/xeonstin.github.io>（GitHub Pages 从 `master` 根目录直接发布，纯静态、无需构建）
+- 线上地址：<https://xeonstin.github.io/gargantua-echo/>
+- 源仓库：<https://github.com/XeonStin/gargantua-echo>（GitHub Pages 项目站，`master` 根目录发布到子路径 `/gargantua-echo/`；全站相对路径引用，无需构建）
 
 ## 启动
 
