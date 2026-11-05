@@ -70,6 +70,13 @@ function makeLDRRT(w, h) {
   return rt;
 }
 
+// Halton 低差异序列(TAA 抖动用;提取到模块层,_setJitter 每帧调用不再重建闭包)
+function halton(i, b) {
+  let f = 1, r = 0;
+  while (i > 0) { f /= b; r += f * (i % b); i = (i / b) | 0; }
+  return r;
+}
+
 export class Engine {
   constructor(canvas) {
     this.canvas = canvas;
@@ -348,7 +355,6 @@ export class Engine {
     const eff = Math.max(frameMs, intervalEma - vsyncMin);
     this._ema = this._ema === undefined ? eff : this._ema * 0.94 + eff * 0.06;
     this._adaptCount = (this._adaptCount || 0) + 1;
-    if (this._adaptCount < 50 || !this._lastAdapt) this._lastAdapt = performance.now();
     if (this._adaptCount % 90 !== 0) return;
     const floor = this.getResFloor();
     let s = this.resScale;
@@ -567,11 +573,6 @@ export class Engine {
     if (!on) { this.uRT.uJitter.value.set(0, 0); return; }
     this._jitIdx = ((this._jitIdx || 0) + 1) & 15;
     // Halton(2,3) 低差异序列 ×0.8 纹素
-    const halton = (i, b) => {
-      let f = 1, r = 0;
-      while (i > 0) { f /= b; r += f * (i % b); i = (i / b) | 0; }
-      return r;
-    };
     this.uRT.uJitter.value.set(
       (halton(this._jitIdx + 1, 2) - 0.5) * 0.8,
       (halton(this._jitIdx + 1, 3) - 0.5) * 0.8);

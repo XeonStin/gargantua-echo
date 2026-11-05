@@ -539,6 +539,8 @@ function reseed() {
 
 function setView(v) {
   state.view = Math.min(9, Math.max(0, v | 0));
+  // TAA/长曝光的累积缓冲是旧调试视图的画面,不丢弃会混影若干帧
+  engine.invalidateAccum();
   ach.track('view', state.view);
   ui.viewToast(state.view);
 }
@@ -701,9 +703,13 @@ function applyShareCode(s) {
   // 先应用 spin:盘内半径的 ISCO 钳制依赖当前自旋。旧实现按对象顺序先设
   // diskInner(4.63)会被默认 spin=0.318 的 ISCO 4.91 抬上去,再设 spin=0.396
   // 时已经标记为手动值,分享码里的 4.63 永远丢失(用户低画质链接即此情况)。
+  // 值必须是有限数字:损坏/伪造分享码里的 NaN 会穿过 clampParam 一路进相机/引擎,
+  // 整页黑屏且无报错(九轮只校验了相机数组,漏了参数表)。
   if (obj.p) {
-    if ('spin' in obj.p) setParam('spin', obj.p.spin);
-    for (const [k, v] of Object.entries(obj.p)) if (k !== 'spin') setParam(k, v);
+    if ('spin' in obj.p && typeof obj.p.spin === 'number' && isFinite(obj.p.spin)) setParam('spin', obj.p.spin);
+    for (const [k, v] of Object.entries(obj.p)) {
+      if (k !== 'spin' && typeof v === 'number' && isFinite(v)) setParam(k, v);
+    }
   }
   if (obj.t) {
     const T = obj.t;
@@ -805,6 +811,8 @@ let fps = 60;
 let costEma = 8;
 let lastCost = 8;                   // 上一帧 CPU 提交耗时(adapt 在渲染前用)
 const frameOpts = { jitter: false, freeze: false }; // 复用的渲染参数对象(主循环每帧零分配)
+const achTickState = { r: 99, mode: 'cine', le: false, leFrames: 11, accumMode: 'taa', fly: false }; // 复用:成就逐帧采样
+const annoState = { spin: 0, diskIn: 4.91, diskOut: 16.5 }; // 复用:标注投影参数
 let rafId = 0;
 let hiddenTimer = 0;
 let running = true;
@@ -901,16 +909,19 @@ function loop(now = performance.now()) {
   if (!state.freeze && !state.still) simTime += dt;
 
   if (tour.active) tour.update(dt);
-  ach.tick(dt, {
-    r: camera.position.length(), mode: state.mode,
-    le: state.longExposure, leFrames: state.exposureFrames, accumMode: state.accumMode,
-    fly: state.mode === 'fly',
-  });
+  // 复用对象传参,保持主循环每帧零分配(十三轮约定的延续)
+  achTickState.r = camera.position.length();
+  achTickState.mode = state.mode;
+  achTickState.le = state.longExposure;
+  achTickState.leFrames = state.exposureFrames;
+  achTickState.accumMode = state.accumMode;
+  achTickState.fly = state.mode === 'fly';
+  ach.tick(dt, achTickState);
   if (annotations.visible && frame % 2 === 0) {
-    annotations.update(camera, {
-      spin: state.params.spin,
-      diskIn: state.params.diskInner, diskOut: state.params.diskOuter,
-    });
+    annoState.spin = state.params.spin;
+    annoState.diskIn = state.params.diskInner;
+    annoState.diskOut = state.params.diskOuter;
+    annotations.update(camera, annoState);
   }
 
   // rAF 间隔信号:GPU 满载表现为掉帧(间隔超出 vsync 周期),CPU cost 测不到这部分
@@ -1052,7 +1063,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.1',
+  version: '2.5.2',
   startGuide: () => guide.start(),
   ready: false,
   info() {

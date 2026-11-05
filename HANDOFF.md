@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-05（十七轮：盘面采样修复 / TAA / 交互与摄影增强）
+> 最后更新：2026-11-06（十八轮：移动端 HUD 遮挡修复 / 代码审查 v2.5.2）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.5.1'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.5.2'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -340,6 +340,30 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
   倾斜盘+进动、引力波模式、TDE 场景、双语 i18n、PWA、课堂模式、参数画廊。
 - 未决小项：无。当前构建干净、0 错误。
 
+## 12b. 十八轮(移动端 HUD 遮挡修复 + 代码审查,v2.5.2,2026-11-06)
+
+**用户反馈**:手机竖屏顶栏预设按钮整排盖住状态行(真机截图)。根因:十七轮手机两层顶栏
+`#hud-tr { top: 58px }` 低估品牌卡高(标志圆 34px 未随移动端缩小 → 卡底 ~61-69px)。
+
+- **CSS 修复(仅移动端媒体查询)**:`.bh-mark` 缩到 26px;`#hud-tr` top → calc(68px +
+  env(safe-area-inset-top));`#hud-tl`/`#hud-br` 补 safe-area(配合 viewport-fit=cover 的
+  PWA/全屏刘海)。IAB 378×624 视口实测:卡底 61.8 / 按钮顶 68,间隙 6.2px,不再遮挡。
+- **手机性能**:`(pointer: coarse)` 下常驻 HUD 卡片/按钮关闭 backdrop-filter(背衬是逐帧重绘
+  的 WebGL 画布,移动 GPU 常驻合成开销),底色 0.62→0.80 保读性;面板/导览/摄影等瞬时浮层
+  保留模糊。桌面窄窗口不受影响(该查询只命中触摸主设备)。
+- **审查修复**:
+  - P2 `applyShareCode` 参数表逐键 isFinite 守卫(此前损坏分享码的 NaN 会穿过 clampParam
+    进相机/引擎 → 黑屏无报错;九轮只校验了相机数组);
+  - P2 `setView` 补 `invalidateAccum()`(调试视图切换在 TAA/长曝光下混影 N 帧);
+  - P3 主循环 `ach.tick`/`annotations.update` 的 opts 对象提升复用(每帧零分配补漏);
+  - P3 `engine._setJitter` 的 halton 闭包提为模块层函数(逐字同算法);
+  - P3 `annotations.update` 静止画面跳过重建(位置+四元数+FOV+aspect+盘参数全等才跳;
+    飞行拖拽只转不移,必须连四元数比对);
+  - P3 `adapt` 死代码 `_lastAdapt` 删除;Esc 现在也关成就图鉴。
+- **验证**:默认视图哈希 `c6811b12…` 改前改后逐字节一致(Kerr 路径在内,渲染零改动);
+  冻结确定性 `70579587…` 一致;全程 0 错误;损坏分享码非法值全跳过、合法值生效;
+  分享码静态往返逐键一致。详 TESTREPORT §23。
+
 ## 13. 八轮(参考配方盘面重写,2026-11-04)
 
 - **盘面模型换成参考项目做法**:`coverage = pow(1-rg,1.35) × 垂直锥 × 6 层乘积噪声 × 有机纹理 × 内密外疏`,`dustGlow=1/(rg²·120+0.02)` 内缘白热 + `vGlow=1/(y²·45+0.01)` 垂直光晕;旧的等值面密度/伪光影/独立 rimGlow 已移除。
@@ -356,6 +380,6 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
 - `AGENTS.md`：常驻工作约定（自动加载）——启动命令、硬约束、验收流程，开工先读。
 - `TESTREPORT.md` 第 12 节：七轮（参考配方升级）验证；第 11 节已知环境限制。
 - `README.md`：用法/参数/开关/URL/API/性能/目录/错误恢复。
-- `TESTREPORT.md`：历轮证据；**末节 = §22 v2.5.1 上线后追加修复（纹理锚点 / warp / 内圈软边）**；含已知环境限制。
+- `TESTREPORT.md`：历轮证据；**末节 = §23 十八轮（移动端 HUD 遮挡修复 / 代码审查 v2.5.2）**；含已知环境限制。
 - 记忆文件：`~/.zcode/cli/memories/projects/ai-playground-9dcf04bbe96961ed/memory/gargantua-53f-project.md`
   （含历轮技术要点与测试坑，MEMORY.md 有索引行）。

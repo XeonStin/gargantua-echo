@@ -244,24 +244,41 @@ select.btn option { background: #111; color: var(--fg); }
 /* ---------------- 移动端 ---------------- */
 @media (pointer: coarse), (max-width: 720px) {
   /* 手机上 HUD 顶栏分两层:品牌卡独占一行,工具按钮在下面换行排列,
-     避免右上角按钮组盖住标题(390px 宽实测)。 */
-  #hud-tl { top: 8px; left: 8px; right: 8px; padding: 6px 9px; }
+     避免右上角按钮组盖住标题(390px 宽实测)。
+     十八轮:#hud-tr 的 top 必须高于品牌卡实际高度(6+26+3+13+6 ≈ 54px,
+     刘海安全区另加)。此前 58px 低于卡底 ~61px(标志圆 34px 撑高),
+     预设按钮整排盖住状态栏(红米真机竖屏截图实锤);标志圆同步缩到 26px。
+     env(safe-area-inset-*) 兼容 PWA/全屏下的刘海与手势条。 */
+  #hud-tl { top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; padding: 6px 9px; }
+  .bh-mark { width: 26px; height: 26px; }
   #hud-tl h1 { font-size: 15px; letter-spacing: .1em; }
   .subtitle { display: none; }
   .stat-line { margin-top: 3px; font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
-  #hud-tr { top: 58px; left: 8px; right: 8px; align-items: stretch; gap: 4px; }
+  #hud-tr { top: calc(68px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; align-items: stretch; gap: 4px; }
   .preset-group, .tool-group { justify-content: flex-start; gap: 4px; }
   .btn { padding: 4px 7px; font-size: 10.5px; }
   /* 导览/成就/音乐在设置面板里都有入口,手机顶栏只留高频操作 */
   #btn-tour-hud, #btn-ach-hud, #btn-music { display: none; }
   #sel-quality { max-width: 78px; }
   #hud-bl { display: none; }
-  #hud-br { bottom: 10px; right: 10px; left: 10px; padding: 4px 8px; }
+  #hud-br { bottom: calc(10px + env(safe-area-inset-bottom, 0px)); right: 10px; left: 10px; padding: 4px 8px; }
   #phys-line { font-size: 9px; white-space: normal; line-height: 1.45; text-align: right; }
   #panel { width: min(320px, 94vw); }
   .tour-card { width: 92vw; }
   .photo-bar { top: 192px; width: 94vw; max-width: 94vw; }
   .photo-adj input[type=range] { width: 58px; }
+}
+
+/* 手机性能:backdrop-filter 的实时重模糊,背衬是逐帧重绘的 WebGL 画布,
+   在 Adreno/Mali 等移动 GPU 上是常驻合成开销。常驻 HUD 卡片/按钮改用更实的
+   底色(0.62→0.80)保读性;面板/导览/摄影等瞬时浮层保留模糊观感。
+   仅命中主输入为触摸的设备;桌面窄窗口(max-width 命中)不受影响。 */
+@media (pointer: coarse) {
+  .hud-card, .btn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(8, 8, 10, 0.80);
+  }
 }
 
 /* ---------------- 面板工具行 2(开关/工具按钮) ---------------- */

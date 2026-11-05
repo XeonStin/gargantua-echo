@@ -44,6 +44,24 @@ export class Annotations {
   // 每帧调用。圆的方向半径 ψ 换算到屏幕:rx_pct = tanψ/(tanF·aspect)·50,ry_pct = tanψ/tanF·50
   update(cam, { spin = 0, rs = 2, diskIn = 4.2, diskOut = 22 } = {}) {
     if (!this.el || !this._visible) return;
+    // 静止画面跳过重建:相机位置/朝向/FOV/纵横比与盘参数都没变时,投影结果完全一致。
+    // TAA 静止观察是常态,重建是 97 段 path 字符串 + 十余次 DOM 写;飞行模式拖拽环视
+    // 只转不移,位置不变,必须连四元数一起比对才不漏更新。
+    if (!this._lp) this._lp = new cam.position.constructor();
+    if (this._hasSig &&
+        this._lp.distanceToSquared(cam.position) < 1e-10 &&
+        Math.abs(this._lqx - cam.quaternion.x) < 1e-6 &&
+        Math.abs(this._lqy - cam.quaternion.y) < 1e-6 &&
+        Math.abs(this._lqz - cam.quaternion.z) < 1e-6 &&
+        Math.abs(this._lqw - cam.quaternion.w) < 1e-6 &&
+        this._lfov === cam.fov && this._lasp === cam.aspect &&
+        this._lspin === spin && this._ldin === diskIn && this._ldout === diskOut) return;
+    this._hasSig = true;
+    this._lp.copy(cam.position);
+    this._lqx = cam.quaternion.x; this._lqy = cam.quaternion.y;
+    this._lqz = cam.quaternion.z; this._lqw = cam.quaternion.w;
+    this._lfov = cam.fov; this._lasp = cam.aspect;
+    this._lspin = spin; this._ldin = diskIn; this._ldout = diskOut;
     if (!this._vec) {
       this._vec = new cam.position.constructor();
       this._v = new cam.position.constructor();

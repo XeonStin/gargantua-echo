@@ -453,7 +453,7 @@ export class UI {
         case 'KeyV': this.o.onPhoto(!this._photoOpen); break;
         case 'KeyN': this.o.onAnnotations(!this._annoOn); break;
         case 'KeyR': this.o[e.shiftKey ? 'onResetParams' : 'onResetView'](); break;
-        case 'Escape': this.togglePanel(false); if (this._photoOpen) this.o.onPhoto(false); break;
+        case 'Escape': this.togglePanel(false); this.toggleAch(false); if (this._photoOpen) this.o.onPhoto(false); break;
         default:
           if (e.code.startsWith('Digit')) {
             const d = parseInt(e.code.slice(5));

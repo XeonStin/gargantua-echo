@@ -146,7 +146,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.5.1):
+**JS API**(`window.gargantua` v2.5.2):
 
 ```js
 gargantua.ready / info()
@@ -185,6 +185,8 @@ window.__LAST_EXPORT__ / window.__GARGANTUA_ERRORS__
 另有隐藏标签页 setTimeout 降级、帧率限制令牌桶(跳过帧不推进时间)。
 **移动端**:低画质档(DPR 1.0 / 96 步 / 3 级 Bloom / 体积盘 2 子采样)+ 自适应动态分辨率
  servo 60fps;旗舰机(Adreno 750)实测由 21fps(标准档)回到满帧 60(十一轮)。
+ 常驻 HUD 卡片/按钮在触摸设备上关闭 backdrop-filter 实时重模糊(底色加实保读性,
+ 十八轮);顶栏布局适配刘海安全区(env(safe-area-inset-*))。
 
 ## 目录结构
 
