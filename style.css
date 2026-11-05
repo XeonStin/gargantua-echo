@@ -55,7 +55,7 @@ html, body {
   box-shadow: 0 0 18px rgba(255, 165, 60, .55);
 }
 #hud-tl h1 {
-  font-size: 21px; letter-spacing: .38em; font-weight: 700;
+  font-size: 18px; letter-spacing: .18em; font-weight: 700;
   color: var(--fg); text-shadow: 0 0 22px rgba(255, 179, 71, .45);
 }
 .subtitle {
@@ -181,13 +181,18 @@ select.btn option { background: #111; color: var(--fg); }
 /* 长曝光行:开关 + 曝光帧数 */
 .le-row {
   display: grid;
-  grid-template-columns: auto 1fr 58px;
-  gap: 8px; align-items: center;
+  grid-template-columns: auto auto minmax(40px, 1fr) 58px;
+  gap: 6px; align-items: center;
   margin: 12px 0 4px;
   padding-top: 10px;
   border-top: 1px dashed rgba(255, 255, 255, 0.12);
 }
-.le-row .btn-le { padding: 5px 10px; font-size: 12px; }
+.le-row .btn-le { padding: 5px 8px; font-size: 12px; }
+.le-row select {
+  background: #15151a; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 4px; font-size: 11px; cursor: pointer;
+}
+.le-row select option { background: #111; color: var(--fg); }
 .le-row input[type=range] {
   width: 100%;
   appearance: none; -webkit-appearance: none;
@@ -238,17 +243,25 @@ select.btn option { background: #111; color: var(--fg); }
 
 /* ---------------- 移动端 ---------------- */
 @media (pointer: coarse), (max-width: 720px) {
-  #hud-tl h1 { font-size: 16px; }
-  .subtitle { font-size: 9px; }
-  #hud-tl { padding: 8px 10px; }
-  .btn { padding: 5px 8px; font-size: 11px; }
+  /* 手机上 HUD 顶栏分两层:品牌卡独占一行,工具按钮在下面换行排列,
+     避免右上角按钮组盖住标题(390px 宽实测)。 */
+  #hud-tl { top: 8px; left: 8px; right: 8px; padding: 6px 9px; }
+  #hud-tl h1 { font-size: 15px; letter-spacing: .1em; }
+  .subtitle { display: none; }
+  .stat-line { margin-top: 3px; font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
+  #hud-tr { top: 58px; left: 8px; right: 8px; align-items: stretch; gap: 4px; }
+  .preset-group, .tool-group { justify-content: flex-start; gap: 4px; }
+  .btn { padding: 4px 7px; font-size: 10.5px; }
+  /* 导览/成就/音乐在设置面板里都有入口,手机顶栏只留高频操作 */
+  #btn-tour-hud, #btn-ach-hud, #btn-music { display: none; }
+  #sel-quality { max-width: 78px; }
   #hud-bl { display: none; }
-  #hud-br { bottom: 12px; right: 12px; padding: 6px 10px; }
-  #phys-line { font-size: 10px; }
-  #hud-tr { top: 12px; right: 12px; gap: 6px; }
-  #panel { width: min(320px, 88vw); }
+  #hud-br { bottom: 10px; right: 10px; left: 10px; padding: 4px 8px; }
+  #phys-line { font-size: 9px; white-space: normal; line-height: 1.45; text-align: right; }
+  #panel { width: min(320px, 94vw); }
   .tour-card { width: 92vw; }
-  .photo-bar { flex-wrap: wrap; width: 94vw; }
+  .photo-bar { top: 192px; width: 94vw; max-width: 94vw; }
+  .photo-adj input[type=range] { width: 58px; }
 }
 
 /* ---------------- 面板工具行 2(开关/工具按钮) ---------------- */
@@ -286,12 +299,41 @@ select.btn option { background: #111; color: var(--fg); }
   outline: 1px solid rgba(255,255,255,.2); border-radius: 50%;
 }
 .photo-bar {
-  position: absolute; top: 74px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px;
+  position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px;
+  width: max-content; max-width: min(96vw, 980px);
   background: var(--card); border: 1px solid var(--border); border-radius: 10px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   padding: 8px 12px; pointer-events: auto;
 }
+.photo-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.photo-adj {
+  gap: 12px; padding-top: 7px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+.photo-adj label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--dim); white-space: nowrap;
+}
+.photo-adj input[type=range] {
+  width: 78px; appearance: none; -webkit-appearance: none;
+  height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--accent) var(--fill, 50%), #2a2a30 var(--fill, 50%));
+}
+.photo-adj input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--fg); border: 2px solid var(--accent);
+}
+.photo-adj input[type=range]::-moz-range-thumb {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--fg); border: 2px solid var(--accent);
+}
+.photo-adj span {
+  font-family: var(--mono); font-size: 10.5px; color: var(--accent);
+  min-width: 30px; text-align: right;
+}
+.photo-adj .chip { padding: 2px 7px; font-size: 10.5px; }
 .photo-title { font-size: 12px; letter-spacing: .2em; color: var(--accent); }
 .photo-group { display: flex; gap: 5px; align-items: center; }
 .chip {

@@ -107,7 +107,7 @@ export class GeodesicLab {
   constructor(camera) {
     this.camera = camera;
     this.scene = new THREE.Scene();
-    this._lines = null;
+    this._fans = []; // 最多保留 3 组,便于对照不同发射点/机位的光子轨迹
     this.launchCount = 0;
     this.lastStatus = null;
     this._cA = new THREE.Color(1.0, 0.92, 0.75);   // 近相机:暖白
@@ -117,15 +117,15 @@ export class GeodesicLab {
     this._cb = new THREE.Color();
   }
 
-  get enabled() { return !!this._lines; }
+  get enabled() { return this._fans.length > 0; }
 
   clear() {
-    if (this._lines) {
-      this.scene.remove(this._lines);
-      this._lines.geometry.dispose();
-      this._lines.material.dispose();
-      this._lines = null;
+    for (const f of this._fans) {
+      this.scene.remove(f);
+      f.geometry.dispose();
+      f.material.dispose();
     }
+    this._fans.length = 0;
   }
 
   // 从相机经屏幕点 (ndcX, ndcY) 发射一圈光子扇
@@ -164,7 +164,6 @@ export class GeodesicLab {
         colors.push(this._ca.r, this._ca.g, this._ca.b, this._cb.r, this._cb.g, this._cb.b);
       }
     }
-    this.clear();
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -172,16 +171,29 @@ export class GeodesicLab {
       vertexColors: true, transparent: true, opacity: 0.85,
       blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false,
     });
-    this._lines = new THREE.LineSegments(geo, mat);
-    this._lines.frustumCulled = false;
-    this.scene.add(this._lines);
+    const lines = new THREE.LineSegments(geo, mat);
+    lines.frustumCulled = false;
+    // 保留最近 3 组:发射后拖拽观察旧轨迹时,旧扇不会因为下一次发射而消失
+    this._fans.push(lines);
+    this.scene.add(lines);
+    while (this._fans.length > 3) {
+      const old = this._fans.shift();
+      this.scene.remove(old);
+      old.geometry.dispose();
+      old.material.dispose();
+    }
+    // 越旧越淡(最新 0.85 / 次新 0.5 / 最旧 0.28),避免多组叠加糊成一片
+    const op = [0.28, 0.5, 0.85];
+    for (let i = 0; i < this._fans.length; i++) {
+      this._fans[i].material.opacity = op[Math.max(0, op.length - this._fans.length + i)];
+    }
     this.launchCount++;
     this.lastStatus = statuses;
-    return { count, statuses };
+    return { count, statuses, fans: this._fans.length };
   }
 
   // 合成 pass 之后叠加渲染(同画布,不清屏)
   renderWith(renderer, camera) {
-    if (this._lines) renderer.render(this.scene, camera);
+    if (this._fans.length) renderer.render(this.scene, camera);
   }
 }

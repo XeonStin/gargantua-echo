@@ -179,6 +179,12 @@ export class Engine {
       uRes: { value: new THREE.Vector2(2, 2) }, uTime: { value: 0 }, uDebug: { value: 0 },
       uEHT: { value: 0 },
       uFilm: { value: 1 },
+      // 摄影模式调整(全中性时 uPhotoAdj=0,合成着色器走原路径)
+      uPhotoAdj: { value: 0 },
+      uPBright: { value: 1 },
+      uPContrast: { value: 1 },
+      uPSat: { value: 1 },
+      uPTemp: { value: 0 },
     };
     const opts = { vertexShader: POST_VERT, depthTest: false, depthWrite: false };
     this.matRT = new THREE.ShaderMaterial({ ...opts, fragmentShader: RT_FRAG, uniforms: this.uRT });
@@ -203,7 +209,12 @@ export class Engine {
     });
     this.le = false;
     this.accumFrames = 8;
+    this.accumMode = 'taa'; // taa = 静止累积抗锯齿(TAA) | le = 长曝光光轨
     this._accumFresh = true;
+    this._accumCount = 0;
+    // TAA 相机运动检测:相机位姿一变就丢弃历史(旧帧不重投影会拖影)
+    this._lastCamPos = null;
+    this._lastCamBasis = null;
   }
 
   buildTargets(withAccum = true) {
@@ -236,6 +247,7 @@ export class Engine {
 
   clearAccum() {
     this._accumFresh = true; // 清空后首帧直接拷贝,避免从黑渐显
+    this._accumCount = 0;
     if (!this.accumRT) return;
     const r = this.renderer;
     r.setRenderTarget(this.accumRT);
@@ -244,10 +256,24 @@ export class Engine {
     r.setRenderTarget(null);
   }
 
-  // 长曝光:开启/关闭(关闭即绕过累积 pass);累积帧数 N(权重 1/N)
-  setLongExposure(on, frames) {
+  // 丢弃历史但不清屏:下一帧以权重 1 覆盖整个累积缓冲(比 clear 便宜,
+  // 用于 TAA 相机移动 / 参数变化等需要立即重来的场景)
+  invalidateAccum() {
+    this._accumFresh = true;
+    this._accumCount = 0;
+  }
+
+  // 时域累积:开启/关闭(关闭即绕过累积 pass);N = 最大累积帧数
+  // mode: 'taa'(静止累积抗锯齿) | 'le'(长曝光光轨)
+  setLongExposure(on, frames, mode) {
     this.le = !!on;
     this.accumFrames = Math.max(2, frames | 0);
+    if (mode === 'taa' || mode === 'le') this.accumMode = mode;
+    this.clearAccum();
+  }
+
+  setAccumMode(mode) {
+    this.accumMode = mode === 'le' ? 'le' : 'taa';
     this.clearAccum();
   }
 
@@ -271,7 +297,7 @@ export class Engine {
     this.resize();
   }
 
-  resize() {
+  resize(repaint = true) {
     const q = QUALITIES[this.quality] || QUALITIES.high;
     const dpr = Math.min(window.devicePixelRatio || 1, q.prCap);
     const cw = Math.max(2, this.canvas.clientWidth || window.innerWidth);
@@ -283,7 +309,9 @@ export class Engine {
     this.buildTargets();
     // setSize 清空了画布:立即重绘一帧,不留空帧给合成器(否则窗口变化/切档/降采样时黑屏一闪)。
     // 启动阶段尚无成功渲染,跳过(首帧主循环会画)。
-    if (this._lastRender) {
+    // repaint=false:主循环的 adapt 在 renderOne 之前调用,同帧马上就会重绘;
+    // 这里再画一帧会让该帧渲染两次 → 自适应调分辨率时肉眼可见的周期性卡顿。
+    if (repaint && this._lastRender) {
       this.renderFrame(this._lastRender.t, this._lastRender.view, this._lastRender.opts);
     }
   }
@@ -336,7 +364,7 @@ export class Engine {
     }
     if (Math.abs(s - this.resScale) > 0.02) {
       this.resScale = s;
-      this.resize(); // resize 内部立即重绘,不留空画布帧
+      this.resize(false); // 主循环马上 renderOne,无需这里提前重绘(否则该帧渲染两次)
     }
   }
 
@@ -345,6 +373,7 @@ export class Engine {
       Math.sin(seed * 12.9898) * 4.37 + 5.0,
       Math.cos(seed * 7.233) * 4.11 + 5.0,
       Math.sin(seed * 3.171) * 4.53 + 5.0);
+    this.invalidateAccum();
   }
 
   setParam(key, v) {
@@ -374,26 +403,48 @@ export class Engine {
       case 'grain': this.uComp.uGrain.value = v; break;
       case 'aberration': this.uComp.uAberr.value = v; break;
     }
+    this.invalidateAccum();
   }
 
   // 性能开关:体积吸积盘
   setVolDisk(on) {
     this.uRT.uVolDisk.value = on ? 1 : 0;
+    this.invalidateAccum();
   }
 
   // EHT 对比模式(合成 pass 内完成,不加 pass)
   setEHT(on) {
     this.uComp.uEHT.value = on ? 1 : 0;
+    this.invalidateAccum();
   }
 
   // 电影色调:盘面双色带(主 pass)+ 胶片曲线(合成 pass)
   setFilmGrade(on) {
     this.uRT.uFilm.value = on ? 1 : 0;
     this.uComp.uFilm.value = on ? 1 : 0;
+    this.invalidateAccum();
   }
 
   setRefColor(on) {
     this.uRT.uRefColor.value = on ? 1 : 0;
+    this.invalidateAccum();
+  }
+
+  // 摄影模式亮度/对比度/饱和度/色温(全中性时完全绕过,默认画面不变)
+  setPhotoAdj(adj = {}) {
+    const num = (v, def) => (typeof v === 'number' && isFinite(v)) ? v : def;
+    const b = Math.min(1.5, Math.max(0.5, num(adj.brightness, 1)));
+    const c = Math.min(1.5, Math.max(0.5, num(adj.contrast, 1)));
+    const s = Math.min(2.0, Math.max(0.0, num(adj.saturation, 1)));
+    const t = Math.min(1.0, Math.max(-1.0, num(adj.temperature, 0)));
+    this.uComp.uPBright.value = b;
+    this.uComp.uPContrast.value = c;
+    this.uComp.uPSat.value = s;
+    this.uComp.uPTemp.value = t;
+    const active = Math.abs(b - 1) > 1e-4 || Math.abs(c - 1) > 1e-4 ||
+      Math.abs(s - 1) > 1e-4 || Math.abs(t) > 1e-4;
+    this.uComp.uPhotoAdj.value = active ? 1 : 0;
+    this.invalidateAccum();
   }
 
   // 自旋 > 0 走 Kerr-Schild 哈密顿 program,否则走速度 Verlet 快速 program
@@ -420,10 +471,21 @@ export class Engine {
     // 1) 主 pass:测地线积分(自旋 0 = Verlet 快速路径,自旋 > 0 = Kerr-Schild 路径)
     this.pass(this.rtMaterial(), this.sceneRT);
 
-    // 2) 长曝光帧累积:accum = accum·(1-w) + frame·w(首帧直接拷贝)
+    // 2) 时域累积:accum = accum·(1-w) + frame·w(首帧直接拷贝)
+    // TAA 用渐进权重 1/n(静止时逐步收敛到 N 样本平均,收敛最快);
+    // 长曝光保持固定 1/N 的滑动平均(运动光轨不会随窗口无限变暗)。
     const le = this.le && debugView === 0 && !!this.accumRT;
     if (le) {
-      const w = this._accumFresh ? 1.0 : 1 / this.accumFrames;
+      let w;
+      if (this._accumFresh || this._accumDirect) {
+        w = 1.0;
+        this._accumCount = 1;
+      } else if (this.accumMode === 'taa') {
+        this._accumCount++;
+        w = 1 / Math.min(this._accumCount, this.accumFrames);
+      } else {
+        w = 1 / this.accumFrames;
+      }
       this._accumFresh = false;
       this.uAccum.uTex.value = this.sceneRT.texture;
       this.uAccum.uWeight.value = w;
@@ -462,16 +524,39 @@ export class Engine {
 
   renderFrame(timeSec, debugView = 0, opts = {}) {
     // 记录最近渲染参数供 resize 后立即重绘:复用同一对象,主循环路径零分配
-    // (opts 只取 jitter 一个开关;调用方传的对象允许是复用的)
-    if (!this._lastRender) this._lastRender = { t: 0, view: 0, opts: { jitter: false } };
+    // (opts 只取 jitter/freeze 两个开关;调用方传的对象允许是复用的)
+    if (!this._lastRender) this._lastRender = { t: 0, view: 0, opts: { jitter: false, freeze: false } };
     const lr = this._lastRender;
     lr.t = timeSec; lr.view = debugView;
     lr.opts.jitter = !!(opts && opts.jitter);
+    lr.opts.freeze = !!(opts && opts.freeze);
+    // 冻结/确定性模式每帧用权重 1 覆盖累积,避免不同 screenshot 调用间的浮点漂移
+    this._accumDirect = !!(opts && opts.freeze);
+    // TAA:相机位姿一变立即丢弃历史。不重投影的累积在运动中只会拖影,
+    // 这正是旧长曝光"拖动视角很糊"的来源。静止后再重新累积 N 个抖动样本。
+    let camMoved = false;
+    if (this.le && this.accumMode === 'taa' && !this._accumDirect) {
+      const cam = this.uRT.uCamPos.value;
+      let moved = false;
+      if (this._lastCamPos) moved = cam.distanceToSquared(this._lastCamPos) > 1e-8;
+      if (!moved && this._lastCamBasis) {
+        const b = this.uRT.uCamBasis.value.elements;
+        for (let i = 0; i < 9; i++) {
+          if (Math.abs(b[i] - this._lastCamBasis[i]) > 1e-6) { moved = true; break; }
+        }
+      }
+      if (moved) { this.invalidateAccum(); camMoved = true; }
+    }
+    this._lastCamPos = (this._lastCamPos || new THREE.Vector3()).copy(this.uRT.uCamPos.value);
+    if (!this._lastCamBasis) this._lastCamBasis = new Float32Array(9);
+    this._lastCamBasis.set(this.uRT.uCamBasis.value.elements);
     this.uRT.uTime.value = timeSec;
     this.uRT.uDebug.value = debugView;
     this.uComp.uTime.value = timeSec;
     this.uComp.uDebug.value = debugView;
-    this._setJitter(!!opts.jitter);
+    // 相机移动的帧不做抖动(反正历史已丢弃):避免运动中的亚像素闪烁;
+    // 停下后再开始累积抖动样本。
+    this._setJitter(!!opts.jitter && !camMoved);
     this._runPipeline(null, debugView);
     this.renderer.setRenderTarget(null);
   }
@@ -505,16 +590,22 @@ export class Engine {
     try {
       this.resScale = 1.0;
       this.W = width; this.H = height;
-      this._setJitter(false); // 导出路径无抖动:freeze 下确定性,且导出自带原生分辨率
-      this.buildTargets(this.le); // 未开长曝光时不分配累积缓冲
+      this._setJitter(false); // 长曝光导出无抖动:freeze 下确定性,且导出自带原生分辨率
+      this.buildTargets(this.le); // 未开时域累积时不分配累积缓冲
       ldr = makeLDRRT(width, height);
 
+      // TAA 导出:时间冻结,每帧换一个亚像素抖动 → 原生分辨率的多重采样抗锯齿。
+      // 长曝光导出:时间推进 + 无抖动 → 原生分辨率光轨。
+      const taa = this.le && this.accumMode === 'taa';
+      if (taa) this._jitIdx = 0;
+      this._accumDirect = false; // 导出必须真正累积(不能沿用冻结帧的直接覆盖模式)
       const frames = this.le ? Math.max(2, this.accumFrames) : 1;
-      const step = this.le ? Math.max(0, frameDt) : 0;
+      const step = this.le && !taa ? Math.max(0, frameDt) : 0;
       this.uRT.uDebug.value = debugView;
       this.uComp.uDebug.value = debugView;
       for (let i = 0; i < frames; i++) {
         const t = timeSec + i * step;
+        if (taa) this._setJitter(true);
         this.uRT.uTime.value = t;
         this.uComp.uTime.value = t;
         this._runPipeline(ldr, debugView);
@@ -523,6 +614,8 @@ export class Engine {
         // setTimeout 会被强节流,故只在可见时让出
         if (!document.hidden && i % 4 === 3) await new Promise(r => setTimeout(r, 0));
       }
+      this._setJitter(false);
+      this._accumDirect = false;
 
       const buf = new Uint8Array(width * height * 4);
       this.renderer.readRenderTargetPixels(ldr, 0, 0, width, height, buf);

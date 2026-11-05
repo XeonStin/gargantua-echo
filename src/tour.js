@@ -4,7 +4,7 @@ const DEG = Math.PI / 180;
 
 export const TOUR_STATIONS = [
   {
-    name: '1 · 欢迎来到 GARGANTUA',
+    name: '1 · 欢迎来到 Gargantua-Echo',
     text: '这不是贴图,也不是建模——你看到的每一束光都在实时求解史瓦西时空的零测地线。' +
           '中央的黑影是「阴影」,边缘那圈细亮环是光子环。拖动画面环视,滚轮推近。',
     cam: { r: 26, polar: 83, az: -35, fov: 55 }, params: {},
@@ -37,18 +37,19 @@ export const TOUR_STATIONS = [
     params: { dopplerBeaming: 1.0, dopplerColor: 0.85 },
   },
   {
-    name: '6 · 长曝光',
-    text: '现在开启了长曝光(帧累积):镜头运动把星光和光子环拉成弧形光轨,噪声被时间平均。' +
-          '这是天文摄影的玩法——黑洞也可以"拍星轨"。',
+    name: '6 · 长曝光与 TAA',
+    text: '现在开启了长曝光(帧累积):镜头运动把星光和光子环拉成弧形光轨,噪声被时间平均——' +
+          '黑洞也可以"拍星轨"。设置里的累积模式可切到 TAA:静止时累积亚像素样本抗锯齿,' +
+          '一移动视角就丢弃历史,不会拖影。',
     cam: { r: 18, polar: 55, az: 300, fov: 55 },
-    params: {}, le: { on: true, frames: 24 },
+    params: {}, le: { on: true, frames: 24, mode: 'le' },
   },
   {
     name: '7 · 时间膨胀',
     text: '右下角的 g(∞) 是引力时间膨胀:离黑洞越近,你的 1 小时 = 远处观察者的更多小时。' +
-          '《星际穿越》米勒星球上的"一小时七年"就是这个公式的极端版。导览结束——去参数面板里玩吧!',
+          '《星际穿越》米勒星球上的"一小时七年"就是这个公式的极端版。导览结束——去设置面板里玩吧!',
     cam: { r: 8.5, polar: 80, az: 330, fov: 60 },
-    params: { diskTemperature: 6400, turbulence: 0.6 }, le: { on: false },
+    params: { diskTemperature: 6400, turbulence: 0.6 }, le: { on: false, mode: 'taa' },
   },
 ];
 
@@ -91,7 +92,7 @@ export class Tour {
     const st = TOUR_STATIONS[this.station];
     // 参数
     for (const [k, v] of Object.entries(st.params || {})) this.opts.onParam?.(k, v);
-    if (st.le) this.opts.onLongExposure?.(st.le.on, st.le.frames);
+    if (st.le) this.opts.onLongExposure?.(st.le.on, st.le.frames, st.le.mode);
     // 相机飞行
     const pol = st.cam.polar * DEG, az = st.cam.az * DEG;
     this._pos.set(

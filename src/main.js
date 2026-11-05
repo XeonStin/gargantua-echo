@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/three/OrbitControls.js';
 import { Engine, iscoRadius, horizonRadius } from './engine.js';
-import { initState, persist, DEFAULTS, PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, FPS_CAPS, LE_FRAMES, EXPORT_SIZES, RES_SCALE, effectiveResFloor } from './state.js';
+import { initState, persist, DEFAULTS, PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, FPS_CAPS, LE_FRAMES, EXPORT_SIZES, RES_SCALE, effectiveResFloor, PHOTO_ADJ_META, PHOTO_ADJ_DEFAULT } from './state.js';
 import { UI } from './ui.js';
 import { Cinematic, applyPreset, PRESETS } from './cinematic.js';
 import { AmbientAudio } from './audio.js';
@@ -20,6 +20,9 @@ const T0 = performance.now();
 const canvas = document.getElementById('gl');
 const state = initState();
 const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
+// 胶片风格只动这 6 个后期参数;进入摄影模式时快照一份,"默认"用它恢复原视效
+const LOOK_KEYS = [...new Set(FILM_LOOKS.flatMap(l => Object.keys(l.params)))];
+let photoBase = null;
 let exporting = false; // 4K/8K 离屏导出期间冻结主循环与参数修改,避免管线/累积缓冲被踩踏
 let diskInnerAuto = true; // 自旋变化时自动把盘内半径跟到 ISCO,用户手动改过即停(初始化段也会用到)
 
@@ -74,7 +77,10 @@ controls.enablePan = false;
 controls.rotateSpeed = 0.6;
 controls.zoomSpeed = 0.9;
 
-const cine = new Cinematic(camera, controls);
+const cine = new Cinematic(camera, controls, () => ({
+  outer: state.params.diskOuter,
+  thick: state.params.diskThickness,
+}));
 const audio = new AmbientAudio();
 let engine = null;
 let ui = null;
@@ -89,7 +95,8 @@ const ach = new Achievements((def) => {
 });
 const tour = new Tour(camera, {
   onParam: (k, v) => setParam(k, v),
-  onLongExposure: (on, frames) => {
+  onLongExposure: (on, frames, mode) => {
+    if (mode) setAccumMode(mode, { silent: true });
     if (frames != null) setExposureFrames(frames, { user: true }); // 第 7 站只关不设帧数,不能把 undefined 写进存档
     setLongExposure(on);
   },
@@ -116,6 +123,7 @@ ui = new UI({
   onExportSize: (v) => setExportSize(v),
   onLongExposure: (on) => setLongExposure(on),
   onExposureFrames: (n, opts) => setExposureFrames(n, opts),
+  onAccumMode: (m) => setAccumMode(m),
   onPreset: (i) => gotoPreset(i),
   onCine: () => setMode(state.mode === 'cine' ? 'orbit' : 'cine'),
   onMode: (m) => setMode(m),
@@ -139,6 +147,8 @@ ui = new UI({
   onPhoto: (on) => setPhoto(on),
   onGeoArm: (on) => setGeoArmed(on),
   onFilmLook: (id) => applyFilmLook(id),
+  onPhotoAdj: (key, v) => setPhotoAdj(key, v),
+  onPhotoAdjReset: () => resetPhotoAdj(),
   onGuide: (id) => ui.setGuideUI(id),
   onStartGuide: () => guide.start(),
   onShareCopy: () => copyShareLink(),
@@ -154,15 +164,27 @@ canvas.addEventListener('pointerdown', exitCineOnDrag);
 canvas.addEventListener('mousedown', exitCineOnDrag);
 canvas.addEventListener('touchstart', exitCineOnDrag, { passive: true });
 
-// 光子弹弓:待发状态下点击画面 → 从该像素发射光子扇
+// 光子弹弓:待发状态下「点击」画面 → 从该像素发射光子扇。
+// 拖拽环视时浏览器仍会在 pointerup 后补发 click,必须用位移区分点击/拖拽,
+// 否则拖一下视角就会误发射新扇、把正在观察的旧轨迹清掉。
+const canvasDrag = { active: false, sx: 0, sy: 0, dist: 0 };
+canvas.addEventListener('pointerdown', (e) => {
+  canvasDrag.active = true; canvasDrag.sx = e.clientX; canvasDrag.sy = e.clientY; canvasDrag.dist = 0;
+});
+window.addEventListener('pointermove', (e) => {
+  if (!canvasDrag.active) return;
+  canvasDrag.dist = Math.max(canvasDrag.dist, Math.hypot(e.clientX - canvasDrag.sx, e.clientY - canvasDrag.sy));
+});
+window.addEventListener('pointerup', () => { canvasDrag.active = false; });
+window.addEventListener('pointercancel', () => { canvasDrag.active = false; });
+
 canvas.addEventListener('click', (e) => {
   if (!state.geoArmed || exporting) return;
+  if (canvasDrag.dist > 6) return; // 拖拽环视 → 不发射
   const rect = canvas.getBoundingClientRect();
-  let ndcX = 0, ndcY = 0;
-  if (!flight.locked) {
-    ndcX = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
-    ndcY = -(((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1);
-  } // pointer lock 下没有像素坐标 → 打屏幕中心
+  // 飞行模式已改为拖拽环视(无 pointer lock),点击始终有像素坐标
+  let ndcX = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
+  let ndcY = -(((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1);
   camera.updateMatrixWorld();
   const r = geolab.launchFromCamera(ndcX, ndcY, {
     spin: state.params.spin, rs: 2, diskOut: state.params.diskOuter,
@@ -170,7 +192,8 @@ canvas.addEventListener('click', (e) => {
   });
   ach.track('fan');
   ui.toast(`光子扇 ×${r.count} · 捕获 ${r.statuses.captured} / 逃逸 ${r.statuses.escaped}` +
-    (r.statuses.maxed ? ` / 绕行 ${r.statuses.maxed}` : ''));
+    (r.statuses.maxed ? ` / 绕行 ${r.statuses.maxed}` : '') +
+    (r.fans > 1 ? ` · 共 ${r.fans} 组` : ''));
 });
 
 // ---------------- 引擎初始化(含降级) ----------------
@@ -189,11 +212,12 @@ engine.setQuality(state.quality);
 engine.setResFloor(state.minScale); // null = 跟随画质档下限
 for (const [k, v] of Object.entries(state.params)) engine.setParam(k, v);
 engine.setSeed(state.seed);
-engine.setLongExposure(state.longExposure, state.exposureFrames);
+engine.setLongExposure(state.longExposure, state.exposureFrames, state.accumMode);
 engine.setVolDisk(state.volDisk);
 engine.setEHT(state.eht);
 engine.setFilmGrade(state.filmGrade);
 engine.setRefColor(state.refColor);
+engine.setPhotoAdj(state.photoAdj);
 annotations.visible = state.annotations;
 // URL/存档带自旋时,初始化把盘内缘抬到物理下限 ISCO —— 只抬不压:
 // 用户手动调大的值与显式 URL 参数(diskInner=)不允许被重置回 ISCO;
@@ -261,6 +285,10 @@ function setParam(key, v, opts = {}) {
     if (state.params.diskInner < iscoNow - 0.01) setParam('diskInner', +iscoNow.toFixed(2), { fromAuto: true });
   }
   if (!opts.fromAuto && !opts.fromTour) ach.track('param');
+  // 摄影模式外改了后期参数 → 下次进入摄影时重新取基准("默认"才不会还原成旧视效)
+  if (!state.photo && LOOK_KEYS.includes(key)) photoBase = null;
+  // TAA/长曝光历史里是旧参数下的画面,立即丢弃避免淡入残影
+  engine.invalidateAccum();
   ui.setParamUI(key, v);
   persist(state);
 }
@@ -330,7 +358,7 @@ function setMode(mode, opts = {}) {
   }
   if (opts.silent) return; // 预设切换等场景避免与后续 toast 互相覆盖
   if (mode === 'cine') ui.toast('电影镜头循环 · 拖拽画面接管相机');
-  else if (mode === 'fly') ui.toast('自由飞行 · WASD 移动 · R/F 升降 · 滚轮调速 · 点击画面锁定环视');
+  else if (mode === 'fly') ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视 · 滚轮调速');
   else ui.toast('自由轨道 · Space 恢复循环 · G 飞行');
 }
 
@@ -354,10 +382,28 @@ function setExportSize(id) {
 function setLongExposure(on) {
   if (exporting) return;
   state.longExposure = !!on;
-  engine.setLongExposure(state.longExposure, state.exposureFrames);
+  engine.setLongExposure(state.longExposure, state.exposureFrames, state.accumMode);
   ui.setLongExposureUI(state.longExposure);
   persist(state);
-  ui.toast(state.longExposure ? `长曝光 · 开(≈${state.exposureFrames} 帧累积)` : '长曝光 · 关');
+  if (state.longExposure) {
+    ui.toast(state.accumMode === 'le'
+      ? `长曝光 · 开(≈${state.exposureFrames} 帧累积)`
+      : `TAA · 开(静止累积 ≤${state.exposureFrames} 帧,移动视角自动重置)`);
+  } else {
+    ui.toast(state.accumMode === 'le' ? '长曝光 · 关' : 'TAA · 关');
+  }
+}
+
+// 时域累积模式:TAA(静止累积抗锯齿,移动自动丢弃历史)/ 长曝光(光轨)
+function setAccumMode(mode, opts = {}) {
+  if (exporting) return;
+  const m = mode === 'le' ? 'le' : 'taa';
+  if (state.accumMode === m) { ui.setAccumModeUI(m); return; }
+  state.accumMode = m;
+  engine.setAccumMode(m);
+  ui.setAccumModeUI(m);
+  persist(state);
+  if (!opts.silent) ui.toast(m === 'le' ? '累积模式 · 长曝光光轨' : '累积模式 · TAA 抗锯齿');
 }
 
 // opts.user: 来自面板交互(长曝光关闭时自动开启);opts.commit: 松手提交,清空旧累积让变化立即可见
@@ -365,6 +411,7 @@ function setExposureFrames(n, opts = {}) {
   if (exporting) return;
   state.exposureFrames = Math.min(LE_FRAMES.max, Math.max(LE_FRAMES.min, Math.round(n) || LE_FRAMES.def));
   engine.setAccumFrames(state.exposureFrames);
+  engine.invalidateAccum();
   ui.setExposureFramesUI(state.exposureFrames);
   if (opts.user && !state.longExposure) {
     setLongExposure(true);
@@ -443,6 +490,7 @@ async function exportImage(name, sizeId = state.exportSize) {
         ? buildWatermark(state.params, {
             size: `${size.w}×${size.h}`,
             frames: state.longExposure ? state.exposureFrames : 0,
+            accumMode: state.accumMode,
           })
         : null,
       onProgress: (i, n) => {
@@ -554,7 +602,7 @@ function setGeoArmed(on) {
   ui.setToggleUI('geoArmed', state.geoArmed);
   if (on) {
     if (state.mode === 'cine') setMode('orbit', { silent: true });
-    ui.toast('光子弹弓 · 已就绪 — 点击画面发射光子扇');
+    ui.toast('光子弹弓 · 已就绪 — 点击发射光子扇;拖拽只移动视角,可观察旧轨迹(最多 3 组)');
   } else {
     geolab.clear();
     ui.toast('光子弹弓 · 收起');
@@ -572,18 +620,54 @@ function setTour(on) {
   }
 }
 
+function snapshotPhotoBase() {
+  return {
+    params: Object.fromEntries(LOOK_KEYS.map(k => [k, state.params[k]])),
+    adj: { ...state.photoAdj },
+  };
+}
+
 function setPhoto(on) {
+  // 第一次进入时快照;退出再进入沿用同一基准,除非在模式外改过后期参数
+  if (on && !state.photo && !photoBase) photoBase = snapshotPhotoBase();
   state.photo = !!on;
   ui.setPhotoUI(state.photo, state);
-  if (on) ui.toast('摄影模式 · 构图线与胶片风格在顶部工具条');
+  if (on) ui.toast('摄影模式 · 顶部可调胶片风格、辅助线与亮度/对比度/饱和度/色温');
 }
 
 function applyFilmLook(id) {
   const look = FILM_LOOKS.find(l => l.id === id);
   if (!look) return;
-  for (const [k, v] of Object.entries(look.params)) setParam(k, v);
+  if (!photoBase) photoBase = snapshotPhotoBase();
+  if (id === 'default') {
+    // 恢复进入摄影模式时的原视效(此前 params 为空对象,点"默认"什么也不做)
+    for (const k of LOOK_KEYS) setParam(k, photoBase.params[k]);
+    for (const m of PHOTO_ADJ_META) setPhotoAdj(m.key, photoBase.adj[m.key]);
+    ui.toast('胶片风格 · 默认(已恢复进入摄影模式时的视效)');
+  } else {
+    // 未在配方里的键回到基准,避免上一个风格的残留
+    for (const k of LOOK_KEYS) setParam(k, look.params[k] ?? photoBase.params[k]);
+    ui.toast(`胶片风格 · ${look.label}`);
+  }
   ui.setLookUI(id);
-  ui.toast(`胶片风格 · ${look.label}`);
+}
+
+function setPhotoAdj(key, v) {
+  const m = PHOTO_ADJ_META.find(x => x.key === key);
+  if (!m || typeof v !== 'number' || !isFinite(v)) return;
+  if (!state.photo) photoBase = null; // 模式外改调整 → 下次进入重新取基准
+  state.photoAdj[key] = Math.min(m.max, Math.max(m.min, v));
+  engine.setPhotoAdj(state.photoAdj);
+  ui.setPhotoAdjUI(state.photoAdj);
+  persist(state);
+}
+
+function resetPhotoAdj() {
+  for (const m of PHOTO_ADJ_META) state.photoAdj[m.key] = PHOTO_ADJ_DEFAULT[m.key];
+  engine.setPhotoAdj(state.photoAdj);
+  ui.setPhotoAdjUI(state.photoAdj);
+  persist(state);
+  ui.toast('摄影调整 · 已复位');
 }
 
 // ---------------- 分享码 ----------------
@@ -614,7 +698,13 @@ function applyShareCode(s) {
   const code = m ? m[1] : s;
   const obj = decodeShare(code);
   if (!obj) { ui.toast('分享码无效'); return; }
-  if (obj.p) for (const [k, v] of Object.entries(obj.p)) setParam(k, v);
+  // 先应用 spin:盘内半径的 ISCO 钳制依赖当前自旋。旧实现按对象顺序先设
+  // diskInner(4.63)会被默认 spin=0.318 的 ISCO 4.91 抬上去,再设 spin=0.396
+  // 时已经标记为手动值,分享码里的 4.63 永远丢失(用户低画质链接即此情况)。
+  if (obj.p) {
+    if ('spin' in obj.p) setParam('spin', obj.p.spin);
+    for (const [k, v] of Object.entries(obj.p)) if (k !== 'spin') setParam(k, v);
+  }
   if (obj.t) {
     const T = obj.t;
     if (T.vd !== undefined) setVolDisk(!!T.vd);
@@ -626,9 +716,18 @@ function applyShareCode(s) {
     if (T.ga !== undefined) setGeoArmed(!!T.ga);
   }
   if (obj.q && QUALITIES[obj.q]) setQuality(obj.q);
+  if (obj.pa && typeof obj.pa === 'object') {
+    const PA = { b: 'brightness', c: 'contrast', s: 'saturation', t: 'temperature' };
+    for (const [k, v] of Object.entries(obj.pa)) {
+      if (PA[k] && typeof v === 'number' && isFinite(v)) setPhotoAdj(PA[k], v);
+    }
+  }
   if (typeof obj.sd === 'number') { state.seed = obj.sd | 0; engine.setSeed(state.seed); }
-  setLongExposure(!!obj.le);
+  // 旧分享码没有 lm 字段:当时的 le=1 表示长曝光,沿用光轨语义
+  if (obj.lm === 'le' || obj.lm === 'taa') setAccumMode(obj.lm, { silent: true });
+  else if (obj.le) setAccumMode('le', { silent: true });
   if (typeof obj.lf === 'number') setExposureFrames(obj.lf);
+  setLongExposure(!!obj.le);
   if (Array.isArray(obj.c) && obj.c.length === 4 && obj.c.every(v => typeof v === 'number' && isFinite(v))) {
     setMode('orbit', { silent: true });
     camera.position.set(obj.c[0], obj.c[1], obj.c[2]);
@@ -648,8 +747,10 @@ ui.setQualityUI(state.quality);
 ui.setFpsCapUI(state.fpsCap);
 ui.setExportSizeUI(state.exportSize);
 ui.setLongExposureUI(state.longExposure);
+ui.setAccumModeUI(state.accumMode);
 ui.setExposureFramesUI(state.exposureFrames);
 ui.setParamsUI(state.params);
+ui.setPhotoAdjUI(state.photoAdj);
 ui.setToggleUI('volDisk', state.volDisk);
 ui.setFlyBoundaryUI(state.flyBoundary);
 ui.setMinScaleUI(effectiveResFloor(state), state.minScale === null);
@@ -670,7 +771,7 @@ if (state.tour) setTour(true);
 if (state.mode === 'fly') {
   controls.enabled = false;
   flight.enter();
-  ui.toast('自由飞行 · WASD 移动 · R/F 升降 · 滚轮调速');
+  ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视');
 }
 
 // 音乐:自动尝试 + 首次手势兜底(浏览器自动播放策略)
@@ -688,6 +789,7 @@ if (state.music) {
 // ---------------- 截图自动化 ----------------
 const capture = new Capture(canvas);
 capture.renderOne = renderOne;
+capture.warmup = state.freeze; // 冻结模式:截图前空跑一帧,消除首次绘制的偶发差异
 
 // ---------------- 主循环 ----------------
 let frame = 0;
@@ -702,7 +804,7 @@ let vsyncMin = 16.7;               // vsync 周期估计(运行中的最小间�
 let fps = 60;
 let costEma = 8;
 let lastCost = 8;                   // 上一帧 CPU 提交耗时(adapt 在渲染前用)
-const frameOpts = { jitter: false }; // 复用的渲染参数对象(主循环每帧零分配)
+const frameOpts = { jitter: false, freeze: false }; // 复用的渲染参数对象(主循环每帧零分配)
 let rafId = 0;
 let hiddenTimer = 0;
 let running = true;
@@ -766,8 +868,9 @@ function renderOne() {
   }
   camera.updateMatrixWorld();
   engine.updateCamera(camera);
-  // 长曝光时启用亚像素抖动:帧累积顺带完成时域超采样(冻结模式保持确定性)
+  // TAA/长曝光时启用亚像素抖动:帧累积顺带完成时域超采样(冻结模式保持确定性)
   frameOpts.jitter = state.longExposure && !state.freeze;
+  frameOpts.freeze = state.freeze;
   engine.renderFrame(simTime, state.view, frameOpts);
   // 光子轨迹叠加(合成 pass 已输出到画布,直接叠加渲染,不清屏)
   if (geolab.enabled) {
@@ -800,7 +903,8 @@ function loop(now = performance.now()) {
   if (tour.active) tour.update(dt);
   ach.tick(dt, {
     r: camera.position.length(), mode: state.mode,
-    le: state.longExposure, leFrames: state.exposureFrames, fly: state.mode === 'fly',
+    le: state.longExposure, leFrames: state.exposureFrames, accumMode: state.accumMode,
+    fly: state.mode === 'fly',
   });
   if (annotations.visible && frame % 2 === 0) {
     annotations.update(camera, {
@@ -836,7 +940,7 @@ function loop(now = performance.now()) {
       fps, ms: costEma, w: engine.W, h: engine.H,
       steps: QUALITIES[state.quality].steps,
       quality: state.quality, mode: state.mode, view: state.view, le: state.longExposure,
-      leFrames: state.exposureFrames,
+      leFrames: state.exposureFrames, accumMode: state.accumMode,
     });
   }
   if (frame % 15 === 0) {
@@ -869,7 +973,7 @@ function onFirstFrame() {
     `[GARGANTUA] ready in ${(performance.now() - T0).toFixed(0)}ms · ` +
     `WebGL2=${engine.isWebGL2} HDR=${engine.hdrFloat} · 内部分辨率 ${engine.W}×${engine.H} · ` +
     `质量 ${state.quality} · ${PARAM_COUNT} 参数 · 移动端=${IS_MOBILE}`);
-  ui.toast('GARGANTUA 就绪 · Space 暂停循环 · P 打开参数面板');
+  ui.toast('Gargantua-Echo 就绪 · Space 暂停循环 · P 打开设置面板');
   guide.maybeAutoStart(state); // 首访功能引导(自动化/隐藏 HUD/带参场景豁免;?guide=1 强制)
 }
 
@@ -948,7 +1052,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.4.0',
+  version: '2.5.0',
   startGuide: () => guide.start(),
   ready: false,
   info() {
@@ -959,8 +1063,10 @@ window.gargantua = {
       quality: state.quality, mode: state.mode, view: state.view, fpsCap: state.fpsCap,
       exportSize: state.exportSize,
       longExposure: state.longExposure, exposureFrames: state.exposureFrames,
+      accumMode: state.accumMode,
       volDisk: state.volDisk,
       annotations: state.annotations, eht: state.eht, watermark: state.watermark,
+      photoAdj: { ...state.photoAdj },
       filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
       minScale: state.minScale, resFloor: engine.getResFloor(), resScale: +engine.resScale.toFixed(3),
       geoArmed: state.geoArmed, tour: tour.active, tourStation: tour.station,
@@ -979,6 +1085,7 @@ window.gargantua = {
   setFpsCap(v) { setFpsCap(v | 0); return state.fpsCap; },
   setExportSize(id) { setExportSize(id); return state.exportSize; },
   setLongExposure(on) { setLongExposure(!!on); return state.longExposure; },
+  setAccumMode(m) { setAccumMode(m); return state.accumMode; },
   setExposureFrames(n) { setExposureFrames(+n); return state.exposureFrames; },
   setVolDisk(on) { setVolDisk(!!on); return state.volDisk; },
   setFlyBoundary(v) { setFlyBoundary(+v, { commit: true }); return state.flyBoundary; },
@@ -987,6 +1094,11 @@ window.gargantua = {
   setFilmGrade(on) { setFilmGrade(!!on); return state.filmGrade; },
   setRefColor(on) { setRefColor(!!on); return state.refColor; },
   setWatermark(on) { setWatermark(!!on); return state.watermark; },
+  getPhotoAdj: () => ({ ...state.photoAdj }),
+  setPhotoAdj(obj) {
+    for (const [k, v] of Object.entries(obj || {})) setPhotoAdj(k, +v);
+    return { ...state.photoAdj };
+  },
   setTour(on) { setTour(!!on); return tour.active; },
   setPhoto(on) { setPhoto(!!on); return state.photo; },
   setGeoArm(on) { setGeoArmed(!!on); return state.geoArmed; },

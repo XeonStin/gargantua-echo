@@ -1,5 +1,5 @@
-// GARGANTUA — UI:HUD 统计、24 参数面板、快捷键、Toast、覆盖层
-import { PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, DEFAULTS, LE_FRAMES, RES_SCALE } from './state.js';
+// GARGANTUA — UI:HUD 统计、24 项设置面板、快捷键、Toast、覆盖层
+import { PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, DEFAULTS, LE_FRAMES, RES_SCALE, PHOTO_ADJ_META } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,7 +30,7 @@ export class UI {
     this._wireKeys();
   }
 
-  // ---------------- 参数面板 ----------------
+  // ---------------- 设置面板 ----------------
   _buildPanel() {
     const groups = {};
     for (const m of PARAM_META) (groups[m.group] ??= []).push(m);
@@ -82,22 +82,26 @@ export class UI {
       }
       root.appendChild(sec);
     }
-    // 长曝光(新增设置项,不占参数槽):开关 + 曝光帧数滑杆
+    // 时域累积(不占参数槽):TAA / 长曝光模式 + 开关 + 帧数滑杆
     if (postSection) {
       const leRow = document.createElement('div');
       leRow.className = 'le-row';
       const btn = document.createElement('button');
       btn.className = 'btn btn-le';
       btn.id = 'btn-le';
-      btn.textContent = '长曝光';
-      btn.title = '帧累积:镜头环绕时产生光轨,颗粒被平均;拖动右侧滑杆会自动开启';
+      btn.textContent = 'TAA';
+      btn.title = 'TAA:静止时累积亚像素抖动样本抗锯齿;移动视角自动丢弃历史，不拖影';
       btn.setAttribute('aria-pressed', 'false');
+      const mode = document.createElement('select');
+      mode.id = 'sel-accummode';
+      mode.title = 'TAA 抗锯齿 / 长曝光光轨';
+      mode.innerHTML = '<option value="taa">TAA</option><option value="le">长曝光</option>';
       const range = document.createElement('input');
       range.type = 'range';
       range.id = 'pr-leframes';
       range.min = LE_FRAMES.min; range.max = LE_FRAMES.max; range.step = 1;
       range.value = LE_FRAMES.def;
-      range.title = '曝光帧数(累积长度)';
+      range.title = 'TAA 采样数 / 长曝光累积帧数';
       this._fillRange(range, LE_FRAMES.min, LE_FRAMES.max, LE_FRAMES.def);
       const val = document.createElement('input');
       val.type = 'number';
@@ -106,6 +110,7 @@ export class UI {
       val.min = LE_FRAMES.min; val.max = LE_FRAMES.max; val.step = 1;
       val.value = LE_FRAMES.def;
       btn.addEventListener('click', () => this.o.onLongExposure(!btn.classList.contains('active')));
+      mode.addEventListener('change', () => this.o.onAccumMode(mode.value));
       const applyN = (v, fromRange, commit) => {
         v = Math.min(LE_FRAMES.max, Math.max(LE_FRAMES.min, Math.round(parseFloat(v)) || LE_FRAMES.def));
         if (fromRange) val.value = v; else range.value = v;
@@ -116,10 +121,10 @@ export class UI {
       range.addEventListener('input', () => applyN(range.value, true, false));
       range.addEventListener('change', () => applyN(range.value, true, true));
       val.addEventListener('change', () => applyN(val.value, false, true));
-      leRow.append(btn, range, val);
+      leRow.append(btn, mode, range, val);
       postSection.appendChild(leRow);
     }
-    // 面板标题标注 22
+    // 面板标题标注 24
     document.querySelector('#panel .count').textContent = PARAM_COUNT;
   }
 
@@ -154,6 +159,7 @@ export class UI {
     $('btn-cine').addEventListener('click', () => this.o.onCine());
     $('btn-fly').addEventListener('click', () => this.o.onFlyToggle());
     $('btn-music').addEventListener('click', () => this.o.onMusic());
+    $('btn-music-panel')?.addEventListener('click', () => this.o.onMusic());
     $('btn-shot').addEventListener('click', () => this.o.onScreenshot());
     $('btn-panel').addEventListener('click', () => this.togglePanel());
     $('btn-panel-close').addEventListener('click', () => this.togglePanel(false));
@@ -195,6 +201,7 @@ export class UI {
       'btn-photo': () => this.o.onPhoto(!this._photoOpen),
       'btn-photo-hud': () => this.o.onPhoto(!this._photoOpen),
       'btn-ach': () => { this.toggleAch(); },
+      'btn-ach-hud': () => { this.toggleAch(); },
       'btn-share': () => this.o.onShareCopy(),
       'btn-import': () => this.o.onShareImport(),
       'btn-guide': () => this.o.onStartGuide?.(),
@@ -211,6 +218,11 @@ export class UI {
       b.addEventListener('click', () => this.setGuideUI(b.dataset.guide)));
     const pc = $('btn-photo-close');
     if (pc) pc.addEventListener('click', () => this.setPhoto(false));
+    // 摄影调整滑杆:亮度/对比度/饱和度/色温
+    document.querySelectorAll('#photo .photo-adj input[data-adj]').forEach(inp => {
+      inp.addEventListener('input', () => this.o.onPhotoAdj?.(inp.dataset.adj, parseFloat(inp.value)));
+    });
+    $('btn-photo-adj-reset')?.addEventListener('click', () => this.o.onPhotoAdjReset?.());
     // 导览控制
     const tn = $('tour-next'), tp = $('tour-prev'), tx = $('tour-exit');
     if (tn) tn.addEventListener('click', () => this.o.onTourNext?.());
@@ -275,8 +287,30 @@ export class UI {
     if (!p) return;
     p.classList.toggle('on', !!open);
     this.setLookUI('default');
-    if (state) this.setToggleUI('watermark', state.watermark);
+    if (state) {
+      this.setToggleUI('watermark', state.watermark);
+      this.setPhotoAdjUI(state.photoAdj);
+    }
     for (const id of ['btn-photo', 'btn-photo-hud']) $(id)?.classList.toggle('active', !!open);
+  }
+
+  // 摄影调整:同步四根滑杆与数值(不触发 onPhotoAdj)
+  setPhotoAdjUI(adj) {
+    if (!adj) return;
+    for (const m of PHOTO_ADJ_META) {
+      const v = Math.min(m.max, Math.max(m.min, +adj[m.key]));
+      if (!isFinite(v)) continue;
+      const inp = document.querySelector(`#photo .photo-adj input[data-adj="${m.key}"]`);
+      const out = document.querySelector(`#photo .photo-adj span[data-adjv="${m.key}"]`);
+      if (inp) {
+        inp.value = v;
+        const pct = ((v - m.min) / (m.max - m.min)) * 100;
+        inp.style.setProperty('--fill', `${pct}%`);
+      }
+      if (out) out.textContent = m.key === 'temperature'
+        ? (v >= 0 ? '+' : '') + v.toFixed(2)
+        : v.toFixed(2);
+    }
   }
 
   setPhoto(open) {
@@ -340,11 +374,27 @@ export class UI {
   }
 
   setLongExposureUI(on) {
+    this._leOn = !!on;
+    this._syncAccumButton();
+  }
+
+  setAccumModeUI(mode) {
+    this._accumMode = mode === 'le' ? 'le' : 'taa';
+    const sel = $('sel-accummode');
+    if (sel) sel.value = this._accumMode;
+    this._syncAccumButton();
+  }
+
+  _syncAccumButton() {
     const btn = $('btn-le');
-    if (btn) {
-      btn.classList.toggle('active', !!on);
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
+    if (!btn) return;
+    const le = this._accumMode === 'le';
+    btn.classList.toggle('active', !!this._leOn);
+    btn.setAttribute('aria-pressed', this._leOn ? 'true' : 'false');
+    btn.textContent = le ? '长曝光' : 'TAA';
+    btn.title = le
+      ? '长曝光:帧累积,镜头运动把亮点拉成光轨(拖右侧滑杆自动开启)'
+      : 'TAA:静止时累积亚像素抖动样本抗锯齿;移动视角自动丢弃历史、不拖影';
   }
 
   setExposureFramesUI(n) {
@@ -361,7 +411,8 @@ export class UI {
   }
 
   setMusicUI(on) {
-    $('btn-music').classList.toggle('active', on);
+    $('btn-music')?.classList.toggle('active', on);
+    $('btn-music-panel')?.classList.toggle('active', on);
   }
 
   togglePanel(force) {
@@ -398,10 +449,8 @@ export class UI {
         case 'KeyM': this.o.onMusic(); break;
         case 'KeyS': e.preventDefault(); this.o.onScreenshot(); break;
         case 'KeyF': this._fullscreen(); break;
-        case 'KeyQ': this.o.onQuality(this._nextQuality()); break;
         case 'KeyT': this.o.onTour(!(this._tourActive)); break;
         case 'KeyV': this.o.onPhoto(!this._photoOpen); break;
-        case 'KeyE': this.o.onEHT(!this._ehtOn); break;
         case 'KeyN': this.o.onAnnotations(!this._annoOn); break;
         case 'KeyR': this.o[e.shiftKey ? 'onResetParams' : 'onResetView'](); break;
         case 'Escape': this.togglePanel(false); if (this._photoOpen) this.o.onPhoto(false); break;
@@ -417,26 +466,20 @@ export class UI {
     $('gl').addEventListener('dblclick', () => this.toggleHud(true));
   }
 
-  _nextQuality() {
-    const order = ['low', 'standard', 'high', 'cinematic'];
-    const cur = $('sel-quality').value;
-    return order[(order.indexOf(cur) + 1) % order.length];
-  }
-
   _fullscreen() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen().catch(() => {});
   }
 
   // ---------------- HUD ----------------
-  updateStats({ fps, ms, w, h, steps, quality, mode, view, le, leFrames }) {
+  updateStats({ fps, ms, w, h, steps, quality, mode, view, le, leFrames, accumMode }) {
     this._fps = fps; this._ms = ms;
     const q = (QUALITIES[quality] || QUALITIES.high).label;
     const modeName = mode === 'cine' ? '镜头循环' : mode === 'fly' ? '自由飞行' : '自由轨道';
     this.statLine.textContent =
       `${fps.toFixed(0)} FPS · ${ms.toFixed(1)} ms · ${w}×${h} · 步数 ${steps} · ${q} · ` +
       `${modeName}${view ? ` · 调试 ${view}` : ''}` +
-      `${le ? ` · 长曝光 ${leFrames ?? ''}帧` : ''}`;
+      `${le ? ` · ${accumMode === 'le' ? '长曝光' : 'TAA'} ${leFrames ?? ''}帧` : ''}`;
   }
 
   updatePhysics({ r, fov, tmax }) {

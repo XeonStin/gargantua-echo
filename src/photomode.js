@@ -19,14 +19,14 @@ export const GUIDES = [
 export function buildWatermark(p, extra = {}) {
   const date = new Date().toISOString().slice(0, 10);
   const bits = [
-    'GARGANTUA',
+    'GARGANTUA-ECHO',
     `a/M ${(+p.spin).toFixed(3)}`,
     `T ${Math.round(p.diskTemperature)}K`,
     `r_in ${(+p.diskInner).toFixed(1)}M`,
     `FOV ${(+p.fov).toFixed(0)}°`,
   ];
   if (extra.size) bits.push(extra.size);
-  if (extra.frames && extra.frames > 1) bits.push(`LE ${extra.frames}f`);
+  if (extra.frames && extra.frames > 1) bits.push(`${extra.accumMode === 'le' ? 'LE' : 'TAA'} ${extra.frames}f`);
   bits.push(date);
   return bits.join(' · ');
 }

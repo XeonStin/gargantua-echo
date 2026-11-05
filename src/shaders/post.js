@@ -79,6 +79,11 @@ uniform float uTime;
 uniform int   uDebug;
 uniform float uEHT;    // EHT 对比模式:模拟事件视界望远镜的有限角分辨率
 uniform float uFilm;   // 电影色调:胶片 S 曲线 + 通道 gamma 暖偏 + 暗部抬升
+uniform float uPhotoAdj; // 摄影调整开关(0 = 全中性,直接走原路径)
+uniform float uPBright;  // 亮度
+uniform float uPContrast;// 对比度
+uniform float uPSat;     // 饱和度
+uniform float uPTemp;    // 色温(-1 冷 / +1 暖)
 
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -152,6 +157,18 @@ void main() {
     col = pow(col, vec3(1.08, 1.03, 1.0));                // 通道 gamma 暖偏(红抬最多)
     col = pow(col, vec3(0.94));                           // 暗部轻抬,深红外缘不糊
     col = clamp(col * 1.02, 0.0, 1.0);                    // 1% 提亮并夹紧
+  }
+
+  // 摄影模式常用调整(亮度/对比度/饱和度/色温)。全中性时 uPhotoAdj=0,
+  // 整段跳过,默认输出与未加此功能时逐位一致。
+  if (uPhotoAdj > 0.5) {
+    col *= uPBright;
+    col = (col - 0.5) * uPContrast + 0.5;
+    float pl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(vec3(pl), col, uPSat);
+    col.r *= 1.0 + uPTemp * 0.10;
+    col.b *= 1.0 - uPTemp * 0.10;
+    col = clamp(col, 0.0, 1.0);
   }
 
   // 暗角(随宽高比修正)

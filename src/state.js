@@ -77,6 +77,15 @@ export const QUALITIES = {
 // 未显式设置时(state.minScale === null)跟随画质档的 resFloor
 export const RES_SCALE = { min: 0.2, max: 1.0, step: 0.05 };
 
+// 摄影模式常用调整(不占 24 项物理参数;中性值 1/1/1/0 不改变默认画面)
+export const PHOTO_ADJ_META = [
+  { key: 'brightness', label: '亮度',   min: 0.5, max: 1.5, step: 0.01, def: 1.0 },
+  { key: 'contrast',   label: '对比度', min: 0.5, max: 1.5, step: 0.01, def: 1.0 },
+  { key: 'saturation', label: '饱和度', min: 0.0, max: 2.0, step: 0.01, def: 1.0 },
+  { key: 'temperature', label: '色温',  min: -1.0, max: 1.0, step: 0.02, def: 0.0 },
+];
+export const PHOTO_ADJ_DEFAULT = Object.fromEntries(PHOTO_ADJ_META.map(m => [m.key, m.def]));
+
 export function effectiveResFloor(state) {
   if (typeof state.minScale === 'number' && isFinite(state.minScale)) {
     return Math.min(RES_SCALE.max, Math.max(RES_SCALE.min, state.minScale));
@@ -130,6 +139,7 @@ export function parseURL() {
     fps: num('fps') !== undefined ? (num('fps') | 0) : undefined,
     le: bool('le'),
     lef: num('lef') !== undefined ? (num('lef') | 0) : undefined,
+    lm: enumv('lm', ['taa', 'le']),
     exp: enumv('exp', EXPORT_SIZES.map(s => s.id)),
     vol: bool('vol'),
     anno: bool('anno'),
@@ -181,11 +191,13 @@ export function persist(state) {
         quality: state.quality === 'safemode' ? 'high' : state.quality,
         seed: state.seed,
         fpsCap: state.fpsCap, longExposure: state.longExposure, exposureFrames: state.exposureFrames,
+        accumMode: state.accumMode,
         exportSize: state.exportSize,
         volDisk: state.volDisk,
         annotations: state.annotations, eht: state.eht, watermark: state.watermark,
         filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
         minScale: state.minScale,
+        photoAdj: state.photoAdj,
       }));
     } catch { /* 隐私模式等场景忽略 */ }
   }, 350);
@@ -199,8 +211,9 @@ export function initState() {
     quality: 'cinematic',
     seed: 7,
     fpsCap: 0,        // 帧率上限(0 = 不限)
-    longExposure: false, // 长曝光(帧累积)
+    longExposure: false, // 时域累积(模式见 accumMode)
     exposureFrames: 11,
+    accumMode: 'taa',    // taa = 静止累积抗锯齿(移动自动重置) | le = 长曝光光轨
     exportSize: 'screen', // 截图/导出分辨率:screen | 4k | 8k
     volDisk: true,       // 体积吸积盘(默认开)
     annotations: false,  // 物理标注叠加
@@ -208,6 +221,7 @@ export function initState() {
     refColor: true,      // 参考配色(内缘白热 + 外缘橙褐),默认开
     flyBoundary: 2.7,    // 自由飞行安全边界(M;2.01 = 贴视界极限,时间膨胀 ~14×)
     minScale: null,       // 动态分辨率下限倍率(null = 跟随画质档 resFloor)
+    photoAdj: { ...PHOTO_ADJ_DEFAULT }, // 摄影模式亮度/对比度/饱和度/色温(中性值不影响画面)
     eht: false,          // EHT 对比模式
     watermark: false,    // 摄影模式:导出水印
     photo: false,        // 摄影模式叠加层(会话级,不持久化)
@@ -240,6 +254,7 @@ export function initState() {
       if (typeof saved.seed === 'number') state.seed = saved.seed;
       if (typeof saved.fpsCap === 'number' && FPS_CAPS.includes(saved.fpsCap)) state.fpsCap = saved.fpsCap;
       if (typeof saved.longExposure === 'boolean') state.longExposure = saved.longExposure;
+      if (saved.accumMode === 'le' || saved.accumMode === 'taa') state.accumMode = saved.accumMode;
       if (typeof saved.exposureFrames === 'number') {
         state.exposureFrames = Math.min(LE_FRAMES.max, Math.max(LE_FRAMES.min, saved.exposureFrames | 0));
       }
@@ -256,6 +271,14 @@ export function initState() {
       if (typeof saved.minScale === 'number' && saved.minScale >= RES_SCALE.min && saved.minScale <= RES_SCALE.max) {
         state.minScale = saved.minScale;
       }
+      if (saved.photoAdj && typeof saved.photoAdj === 'object') {
+        for (const m of PHOTO_ADJ_META) {
+          const v = saved.photoAdj[m.key];
+          if (typeof v === 'number' && isFinite(v)) {
+            state.photoAdj[m.key] = Math.min(m.max, Math.max(m.min, v));
+          }
+        }
+      }
     }
   }
 
@@ -264,6 +287,7 @@ export function initState() {
   if (url.seed !== undefined) state.seed = url.seed;
   if (url.fps !== undefined && FPS_CAPS.includes(url.fps)) state.fpsCap = url.fps;
   if (url.le !== undefined) state.longExposure = url.le;
+  if (url.lm) state.accumMode = url.lm;
   if (url.lef !== undefined) state.exposureFrames = Math.min(LE_FRAMES.max, Math.max(LE_FRAMES.min, url.lef));
   if (url.exp) state.exportSize = url.exp;
   if (url.vol !== undefined) state.volDisk = url.vol;

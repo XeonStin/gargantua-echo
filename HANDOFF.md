@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-05（十六轮：最低分辨率下限滑条）
+> 最后更新：2026-11-05（十七轮：盘面采样修复 / TAA / 交互与摄影增强）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.4.0'`，24 参数 + 最低分辨率下限设置，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.5.0'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -74,24 +74,29 @@ gargantua-echo/
 
 ## 4. 功能清单（全部可用）
 
-- **模式**：cine（电影循环）/ orbit / fly（G；WASD+R/F+滚轮；安全边界可调 2.01–3.0M）
+- **模式**：cine（电影循环；接近盘面时半径平滑抬到盘外缘外，避免穿盘卡顿）/ orbit / fly
+  （G；WASD+R/F 升降+Q/E 滚转+拖拽环视+滚轮调速；安全边界可调 2.01–3.0M）
 - **24 参数**：fov、盘 8 项、相对论 6 项（**spin / jetPower** 等）、星空 3、后期 6
+- **时域累积**：TAA（默认，静止累积、移动自动丢弃历史）/ 长曝光光轨；帧数 2–64；`?le=1&lm=taa|le`
+- **摄影调整**：亮度/对比度/饱和度/色温（中性值不改变默认画面）+ 胶片风格「默认」恢复进入时视效
 - **开关**（面板工具行，`TOGGLE_IDS` 映射）：体积盘 / 电影色调（默认开）/ 标注 / EHT / 水印 / 弹弓
-- **HUD 按钮**：循环 / 飞行 / 导览 / 摄影 / 音乐 / 截图 / 画质 / 参数
-- **快捷键**：Space/O/C/G、Shift+1-4、0-9、P/H/M/S/V/T/E/N、R/Shift+R、F、Q
-- **其他**：导览 7 站（T）、摄影模式（V，胶片预设/构图线/水印）、成就 13 项、分享码（?s=）、
+- **HUD 按钮**：循环 / 飞行 / 导览 / 摄影 / 🏆 成就 / 音乐 / 截图 / 画质 / 设置
+- **快捷键**：Space/O/C/G、Shift+1-4、0-9、P/H/M/S/V/T/N、R/Shift+R、F；飞行中 Q/E 滚转
+  （Q/E 不再切画质/EHT；画质走顶栏/面板下拉，EHT 走开关）
+- **其他**：导览 7 站（T）、摄影模式（V）、成就 13 项（顶栏 🏆 / 设置面板）、分享码（?s=）、
   时间膨胀显示、自旋自动跟 ISCO、Kerr 喷流、4K/8K 导出（屏幕/4K/8K）
 - （九轮移除：真实星空/耶鲁星表烘焙——观感不佳，`src/stars.js`、`assets/data/bright-stars.js`、
   `tools/gen_stars.py` 已删除；`?stars=` 与 `setRealStars` API 不复存在，旧分享码的 `t.rs` 字段被忽略）
 
 ## 5. URL / API 速查
 
-URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?exp ?fov ?vol ?anno ?eht ?film ?refcolor ?flyb ?minscale ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`（`?stars` 已随真实星空移除）
+URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?lm ?exp ?fov ?vol ?anno ?eht ?film ?refcolor ?flyb ?minscale ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`（`?stars` 已随真实星空移除）
 
 API：`setParam/setParams/getParams、setView/setQuality/setMinScale/setPreset/setCine/setSeed、setFpsCap/setExportSize、
-setLongExposure/setExposureFrames、setVolDisk/setAnnotations/setEHT/setFilmGrade/setRefColor/setWatermark、
-setTour/setPhoto/setGeoArm/launchPhoton、setFlyBoundary、share/applyShareCode、renderFrames/renderOne/benchmark、
-screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、`window.__GARGANTUA_ERRORS__`。
+setLongExposure/setAccumMode/setExposureFrames、setVolDisk/setAnnotations/setEHT/setFilmGrade/setRefColor/setWatermark、
+getPhotoAdj/setPhotoAdj、setTour/setPhoto/setGeoArm/launchPhoton、setFlyBoundary、share/applyShareCode、
+renderFrames/renderOne/benchmark、screenshot/exportImage/screenshotDataUrl、info()`；
+`window.__LAST_EXPORT__`、`window.__GARGANTUA_ERRORS__`。
 （`setRealStars` 已移除）
 
 ## 6. 历轮变更摘要
@@ -121,6 +126,19 @@ screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、
 - 差速剪切基准必须是盘外缘（保证 diff≥0 同向）；中点基准会让内外圈反向。
 - 体积盘：4 子采样（低档 2,uVolSub 控制）+ dt×0.40（十轮;勿回 0.28 除非连带回调门控）+ 薄层门控/壳层跳过（§10）；
   辉光在体积模式 ×0.35（4 子采样叠加会白片）。
+- **体积盘中面穿越保护（十七轮，勿删）**：远场大步可能一步跨过薄盘中面，4 子采样全部落在薄层外
+  → 低画质前方盘面缺块 + 粒子-纹理条带。两条积分路径都在预计穿越前把 dt 缩到 0.85·t_cross；
+  删掉后低档分享场景会复现缺块。
+- **盘面细节纹理采样（十七轮，勿回退）**：`texture2D` 线性过滤在体积循环发散分支里走隐式 LOD/导数，
+  同一帧多次渲染会偶发 2/255 差异。细节纹理改为每像素在主函数统一控制流预采样
+  (`diskPlaneDetail`)，纹理用 **NearestFilter** + `diskTexBilinear()` 手动 4 tap 插值；
+  薄盘仍在交点用同一手动采样。**不要把 LinearFilter 或逐样本 texture2D 放回体积循环**。
+- **TAA**：`renderFrame` 比较相机位置/基向量，变化即 `invalidateAccum`；参数/开关变化也要丢历史；
+  冻结模式 `_accumDirect` 每帧权重 1。TAA 导出时间冻结、逐帧换抖动；长曝光导出时间推进。
+- **自适应重绘**：主循环 `adapt` 在 renderOne 之前，`resize(false)` 跳过内部重绘；只有窗口变化/
+  切档等事件路径才用默认 `resize()` 立即补一帧。不要改回 adapt 内重绘（该帧会渲染两次 → 周期性卡顿）。
+- **电影循环避让**：`Cinematic` 在 |y| < 1.0+1.2×厚度 时把半径平滑抬到 diskOuter+3M；
+  否则轨迹会从盘内穿过（近场体积成本暴涨 + 镜头穿模）。
 - **子采样权重补偿必须乘法形式并进 `ev`**（§11）：在 `col +=` 尾部追加 `* evMul` 会让 ANGLE/D3D
   改变 FMA 收缩,默认档输出不再逐位一致——十轮三元 select 坑的同族问题。
 - `flyMinR = max(边界, r₊·1.005)`；飞行子步 ≤1/60s + 速度上限（防卡顿瞬移）。
@@ -267,6 +285,49 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
 (override=null)与旧版逐位一致:同环境 stash 三明治截图哈希 **d76e64d0 三连一致**。v2.4.0。
 详 TESTREPORT §20。
 
+**十七轮(盘面采样修复 / TAA / 交互增强)**:
+- **盘面缺块 + 粒子-纹理条带(同一根因)**:体积盘用段内 4 子采样,远场大步
+  (低档 `uFarMul=5` 时单步可达 8M)会直接跨过薄盘中面,子样本全部落在薄层外 →
+  低画质前方盘面缺一块;同时也产生"粒子-纹理交替"条带。修复:Verlet/Kerr 两条路径
+  在预计本步会穿过盘面(且交点半径在盘内)时把 `dt` 缩到穿越前(0.85·t_cross),
+  下一次迭代在薄层门控内加密采样;`ev` 按实际段长自守恒,亮度不变。低画质分享链接
+  实测前方缺块消失、条带消失。
+- **纹理角向接缝**:`th01*1.6` 非整数 → θ 在 2π 回绕跳 0.6 个纹理周期;`warpR` 用
+  非周期 `vnoise(th01*9)` → 接缝两侧 warp 跳变。改为 `th01*2.0`(整数重复)+
+  `vnoise(vec3(cosθ*9, sinθ*9, 2.0))`(圆周坐标连续)。
+- **盘面纹理采样非确定性(环境级,已记录)**:线性过滤的 `texture2D` 在体积循环发散
+  分支中走隐式 LOD/导数,同一帧多次渲染偶发 2/255 级差异。**原始代码同样存在**
+  (stash 对照 12 帧复现),非本轮引入。为降低影响:体积盘的细节纹理改为**每像素在
+  统一控制流预采样一次**(未弯曲相机光线与赤道面的代表交点),纹理改
+  **NearestFilter + 手写 4 tap 双线性**(`diskTexBilinear`),薄盘仍在交点采样。
+  同环境 2K/720p 基准与原始代码持平(体积额外开销在环境振荡范围内)。
+- **TAA**:累积模式改为 `taa`(默认)/`le`。TAA 渐进权重 `1/min(n,N)` + Halton 抖动;
+  `renderFrame` 检测相机位置/基向量变化 → `invalidateAccum` 立即丢历史(移动不拖影);
+  参数/开关/种子变化也丢历史;冻结模式每帧权重 1 覆盖。长曝光光轨保留为可选模式,
+  导出时 TAA 冻结时间多采样、长曝光推进时间。UI:按钮 + 模式下拉 + 帧数滑杆;
+  `?lm=`、分享码 `lm`(旧分享码 le=1 兼容为长曝光)、API `setAccumMode`。
+- **循环卡顿**:① `engine.adapt` 调分辨率时 `resize(false)` 跳过额外重绘——此前
+  resize 内重绘 + 主循环 renderOne 会让该帧渲染两次,自适应每 90 帧左右一次可见卡顿;
+  ② 电影循环在接近赤道面时把半径平滑抬到 `diskOuter+3M`(盘面 1.0+1.2×厚度 的过渡带),
+  不再从盘内穿过(原轨迹在 t≈35s / 76s 穿过吸积盘,近场体积成本暴涨)。
+- **弹弓**:拖拽位移 >6px 不触发发射(浏览器 pointerup 后补发 click 的老坑);光子扇
+  最多保留 3 组、旧扇渐淡,拖拽观察时旧轨迹不再消失。
+- **飞行**:移除 pointer lock,改为拖拽环视(鼠标空闲可点按钮);新增 Q/E 滚转
+  (角速度积分);Q/E 全局切画质/EHT 快捷键移除。
+- **摄影**:胶片风格「默认」此前 params 为空对象、点了没反应;现在进入摄影模式时
+  快照 6 个后期参数 + 4 个摄影调整,「默认」恢复。新增亮度/对比度/饱和度/色温
+  滑杆(中性值 `uPhotoAdj=0` 绕过,默认画面不变),持久化 + 分享码 `pa` + API。
+- **分享码参数顺序**:先应用 `spin` 再应用其余参数。旧实现按对象顺序先设 `diskInner`,
+  会被默认 spin=0.318 的 ISCO 4.91 抬上去并标记为手动值,分享码里的 4.63 丢失
+  (用户低画质链接复验 inner=4.63 / spin=0.396)。
+- **UI/品牌**:标题与 H1/覆盖层/水印 → Gargantua-Echo;「参数」页改名「设置」;
+  成就入口上 HUD(🏆,手机隐藏,面板保留);手机 HUD 分两层(品牌卡独占一行、工具按钮
+  下移),摄影条移到 HUD 下方;音乐入口补进设置面板。
+- **确定性**:`?freeze=1&still=1` 截图前空跑一帧 + `readPixels(1×1)` 强同步(冻结模式),
+  但本 IAB 环境仍有约 30% 概率出现 2/255 的双稳态差异——**原始代码同样复现**,
+  属环境/GPU 级抖动;默认哈希 `dabfbadc`(本轮构建,同环境)。
+- v2.5.0。详 TESTREPORT §21。
+
 ## 12. 待办 / 可选方向（均未开始，等用户指令）
 
 - 暂缓：双黑洞并合（含 LIGO chirp）、WebXR（无硬件不可验，不盲发）。
@@ -290,6 +351,6 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
 - `AGENTS.md`：常驻工作约定（自动加载）——启动命令、硬约束、验收流程，开工先读。
 - `TESTREPORT.md` 第 12 节：七轮（参考配方升级）验证；第 11 节已知环境限制。
 - `README.md`：用法/参数/开关/URL/API/性能/目录/错误恢复。
-- `TESTREPORT.md`：历轮证据；**末节 = 十一轮（移动端低画质档）验证**；含已知环境限制。
+- `TESTREPORT.md`：历轮证据；**末节 = 十七轮（盘面采样 / TAA / 交互）验证**；含已知环境限制。
 - 记忆文件：`~/.zcode/cli/memories/projects/ai-playground-9dcf04bbe96961ed/memory/gargantua-53f-project.md`
   （含历轮技术要点与测试坑，MEMORY.md 有索引行）。

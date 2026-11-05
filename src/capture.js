@@ -3,6 +3,10 @@ export class Capture {
   constructor(canvas) {
     this.canvas = canvas;
     this.renderOne = null; // 由 main 注入:渲染单帧(同步)
+    // 冻结/自动化模式下先空跑一帧并强同步:部分 GPU 在长时间空闲后的首次
+    // 绘制会有一次性的 2/255 级差异。预热降低该概率;环境级双稳态无法完全
+    // 消除(原始代码同样复现,详见 TESTREPORT §21)。
+    this.warmup = false;
   }
 
   // 显式渲染 n 帧;delayMs=0 时纯同步(隐藏页 setTimeout 会被 1s 节流,逐帧 await 会拖慢 60 倍)
@@ -20,6 +24,15 @@ export class Capture {
   // 同一任务内先渲染再读取画布,确保缓冲有效
   screenshotDataUrl() {
     this.renderOne();
+    if (this.warmup) {
+      this.renderOne();
+      // 强同步:等 GPU 真正完成后再读画布,避免偶发读到上一帧/半帧
+      const gl = this.canvas.getContext('webgl2');
+      if (gl) {
+        const px = new Uint8Array(4);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      }
+    }
     return this.canvas.toDataURL('image/png');
   }
 

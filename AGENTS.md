@@ -28,6 +28,12 @@ cd gargantua-echo && python serve.py 5300
 - **子采样权重补偿必须用乘法形式并进 `ev` 本身**（`segLen*(0.25-0.125*step(...))`），不得在
   `col +=` 处追加 `* evMul` 因子——ANGLE/D3D 的 FMA 收缩随表达式形状改变，会破坏默认档逐位
   输出（十一轮实测：evMul 形式哈希改变，乘法形式与旧代码精确一致 a75252fd）。
+- **体积盘中面穿越保护**（十七轮）：预计本步穿过盘面且交点在盘内时，dt 必须缩到
+  0.85·t_cross；否则远场大步会跳过薄层，产生低画质前方缺块与粒子-纹理条带。
+- **盘面细节纹理**：体积循环里不得逐样本 `texture2D`（线性过滤的隐式 LOD/导数在发散分支
+  不稳定）；用主函数统一控制流预采样的 `detail0` + NearestFilter 手写双线性。
+- **TAA**：相机位姿变化必须 `invalidateAccum()` 丢历史（不重投影，保留会拖影）；参数/开关
+  变化也要丢；冻结模式权重 1 覆盖。`adapt` 调分辨率用 `resize(false)`，避免该帧二次渲染。
 - 双路径共享 `COMMON`（raytracer.js）；材质按 `uSpin > 0.001` 切换；uniforms 对象共享。
 - 导出期间 `exporting` 必须冻结主循环/参数/模式切换；LE 累积 pass 必须 noClear。
 - UI 开关的 DOM id 与状态键必须走 `ui.js` 的 `TOGGLE_IDS` 显式映射（勿用驼峰键自动拼接）。

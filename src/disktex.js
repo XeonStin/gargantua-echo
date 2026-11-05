@@ -75,8 +75,11 @@ export function bakeDiskTexture(size = 512, per = 8) {
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
+  // 着色器里用 diskTexBilinear() 手动双线性采样:驱动线性过滤在发散分支下
+  // 走隐式 LOD/导数,多次渲染会出现 2/255 级浮动(非确定性)。Nearest + 手动
+  // 插值逐位稳定,观感一致。
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.needsUpdate = true;

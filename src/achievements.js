@@ -68,10 +68,11 @@ export class Achievements {
   }
 
   // 每帧型(约 2Hz 调用即可,dt 为帧间隔)
-  tick(dt, { r = 99, mode = 'orbit', le = false, leFrames = 8, fly = false } = {}) {
+  tick(dt, { r = 99, mode = 'orbit', le = false, leFrames = 8, accumMode = 'taa', fly = false } = {}) {
     if (r < 4.5) this.unlock('photon');
     if (fly && r < 6) this.unlock('flyer');
-    if (le && leFrames >= 32) {
+    // 光轨成就只认长曝光模式:TAA 同样是帧累积,但不产生光轨
+    if (le && accumMode === 'le' && leFrames >= 32) {
       this._leTime += dt;
       if (this._leTime >= 15) this.unlock('lighttrails');
     } else this._leTime = 0;

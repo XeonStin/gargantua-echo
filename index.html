@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
-<title>GARGANTUA — Black Hole Raytracer</title>
-<meta name="description" content="全屏 Fragment Shader 实时积分 Schwarzschild / Kerr 零测地线的交互式黑洞渲染器">
+<title>Gargantua-Echo — Black Hole Raytracer</title>
+<meta name="description" content="Gargantua-Echo:全屏 Fragment Shader 实时积分 Schwarzschild / Kerr 零测地线的交互式黑洞渲染器">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23ffb347' stroke-width='1.6'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%23000'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="./style.css">
 <script type="importmap">
@@ -18,7 +18,7 @@
 </script>
 </head>
 <body>
-<canvas id="gl" aria-label="GARGANTUA 黑洞渲染画布"></canvas>
+<canvas id="gl" aria-label="Gargantua-Echo 黑洞渲染画布"></canvas>
 
 <!-- ======================= HUD ======================= -->
 <div id="hud">
@@ -26,7 +26,7 @@
     <div class="title-row">
       <span class="bh-mark" aria-hidden="true"></span>
       <div>
-        <h1>GARGANTUA</h1>
+        <h1>GARGANTUA-ECHO</h1>
         <p class="subtitle">Black Hole Raytracer · Schwarzschild / Kerr</p>
       </div>
     </div>
@@ -42,18 +42,19 @@
     </div>
     <div class="tool-group">
       <button class="btn" id="btn-cine" title="电影镜头循环 (Space)">▶ 循环</button>
-      <button class="btn" id="btn-fly" title="自由飞行 (G):WASD 移动 · R/F 升降">✈ 飞行</button>
+      <button class="btn" id="btn-fly" title="自由飞行 (G):WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视">✈ 飞行</button>
       <button class="btn" id="btn-tour-hud" title="7 站中文导览 (T)">◎ 导览</button>
-      <button class="btn" id="btn-photo-hud" title="摄影模式:胶片风格 + 构图线 (V)">◉ 摄影</button>
+      <button class="btn" id="btn-photo-hud" title="摄影模式:胶片风格 + 构图线 + 亮度/对比度 (V)">◉ 摄影</button>
+      <button class="btn btn-icon" id="btn-ach-hud" title="成就图鉴">🏆</button>
       <button class="btn" id="btn-music" title="氛围音乐 (M)">♪ 音乐</button>
-      <button class="btn" id="btn-shot" title="保存截图 (S) · 导出分辨率见参数面板">⎙ 截图</button>
+      <button class="btn" id="btn-shot" title="保存截图 (S) · 导出分辨率见设置面板">⎙ 截图</button>
       <select class="btn" id="sel-quality" title="画质档位 (Q 切换)" aria-label="画质档位">
         <option value="low">低</option>
         <option value="standard">标准</option>
         <option value="high">高</option>
         <option value="cinematic">电影</option>
       </select>
-      <button class="btn" id="btn-panel" title="参数面板 (P)">参数</button>
+      <button class="btn" id="btn-panel" title="设置面板 (P)">设置</button>
       <button class="btn btn-icon" id="btn-hud" title="隐藏 HUD (H)">⌄</button>
     </div>
   </div>
@@ -63,8 +64,8 @@
       <span><b>Space</b> 循环</span><span><b>O/C/G</b> 轨道/镜头/飞行</span><span><b>Shift+1-4</b> 预设</span>
       <span><b>0-9</b> 调试视图</span><span><b>H</b> HUD</span><span><b>P</b> 面板</span>
       <span><b>M</b> 音乐</span><span><b>S</b> 截图</span><span><b>V</b> 摄影</span><span><b>T</b> 导览</span>
-      <span><b>E</b> EHT</span><span><b>N</b> 标注</span><span><b>R</b> 复位</span><span><b>F</b> 全屏</span>
-      <span><b>拖拽/滚轮</b> 环绕/缩放</span>
+      <span><b>N</b> 标注</span><span><b>R</b> 复位</span><span><b>F</b> 全屏</span>
+      <span><b>飞行 Q/E</b> 滚转</span><span><b>拖拽/滚轮</b> 环绕/缩放</span>
     </div>
   </div>
 
@@ -73,10 +74,10 @@
   </div>
 </div>
 
-<!-- ======================= 参数面板 ======================= -->
-<aside id="panel" aria-label="参数面板" hidden>
+<!-- ======================= 设置面板 ======================= -->
+<aside id="panel" aria-label="设置面板" hidden>
   <div class="panel-head">
-    <h2>参数 <span class="count">24</span></h2>
+    <h2>设置 <span class="count">24</span></h2>
     <button class="btn btn-icon" id="btn-panel-close" title="关闭 (Esc)">✕</button>
   </div>
   <div class="panel-tools">
@@ -120,16 +121,17 @@
     <div class="tool-row2">
       <button class="btn btn-tgl" id="tgl-voldisk" title="体积吸积盘:薄面穿越 → 体积积分(更厚更真实,帧耗上升)">体积盘</button>
       <button class="btn btn-tgl" id="tgl-anno" title="物理标注:阴影/光子环/ISCO/视界理论位置投影 (N)">标注</button>
-      <button class="btn btn-tgl" id="tgl-eht" title="EHT 视角:模拟事件视界望远镜的有限分辨率 (E)">EHT</button>
+      <button class="btn btn-tgl" id="tgl-eht" title="EHT 视角:模拟事件视界望远镜的有限分辨率">EHT</button>
       <button class="btn btn-tgl" id="tgl-film" title="电影色调:胶片 S 曲线 + 暖偏 + 盘面双色带(默认开)">电影色调</button>
       <button class="btn btn-tgl" id="tgl-refcolor" title="参考配色:内缘白热 + 外缘橙褐(参考项目观感,关闭时用物理黑体+多普勒)">参考配色</button>
       <button class="btn btn-tgl" id="tgl-watermark" title="导出 PNG 左下角附参数摘要">水印</button>
-      <button class="btn btn-tgl" id="tgl-geo" title="光子弹弓:点击画面发射一圈真实积分的光子轨迹">弹弓</button>
+      <button class="btn btn-tgl" id="tgl-geo" title="光子弹弓:点击画面发射一圈真实积分的光子轨迹;拖拽只移动视角,最多保留 3 组">弹弓</button>
     </div>
     <div class="tool-row2">
       <button class="btn" id="btn-tour" title="7 站中文导览 (T)">导览</button>
       <button class="btn" id="btn-photo" title="摄影模式:胶片风格 + 构图线 (V)">摄影</button>
-      <button class="btn" id="btn-ach" title="成就图鉴">成就</button>
+      <button class="btn" id="btn-ach" title="成就图鉴">🏆 成就</button>
+      <button class="btn" id="btn-music-panel" title="氛围音乐">♪ 音乐</button>
       <button class="btn" id="btn-share" title="复制分享链接(含全部参数与相机)">分享</button>
       <button class="btn" id="btn-import" title="粘贴分享码导入场景">导入</button>
       <button class="btn" id="btn-guide" title="功能引导:界面 / 画质 / 快捷键快速上手">引导</button>
@@ -142,23 +144,32 @@
   <div id="photo" aria-label="摄影模式">
     <div id="guides" class="guides"></div>
     <div class="photo-bar">
-      <span class="photo-title">摄影</span>
-      <span class="photo-group" id="looks">
-        <button class="chip look-chip active" data-look="default">默认</button>
-        <button class="chip look-chip" data-look="imax">IMAX 暖</button>
-        <button class="chip look-chip" data-look="interstellar">星际冷</button>
-        <button class="chip look-chip" data-look="kodak">柯达 5219</button>
-        <button class="chip look-chip" data-look="doc">纪实</button>
-      </span>
-      <span class="photo-group">
-        <button class="chip guide-chip active" data-guide="off">无辅助线</button>
-        <button class="chip guide-chip" data-guide="thirds">三分</button>
-        <button class="chip guide-chip" data-guide="golden">黄金</button>
-        <button class="chip guide-chip" data-guide="cross">十字</button>
-      </span>
-      <span class="photo-group">
-        <button class="chip" id="btn-photo-close">✕ 退出 (V)</button>
-      </span>
+      <div class="photo-row">
+        <span class="photo-title">摄影</span>
+        <span class="photo-group" id="looks">
+          <button class="chip look-chip active" data-look="default" title="恢复进入摄影模式时的视效">默认</button>
+          <button class="chip look-chip" data-look="imax">IMAX 暖</button>
+          <button class="chip look-chip" data-look="interstellar">星际冷</button>
+          <button class="chip look-chip" data-look="kodak">柯达 5219</button>
+          <button class="chip look-chip" data-look="doc">纪实</button>
+        </span>
+        <span class="photo-group">
+          <button class="chip guide-chip active" data-guide="off">无辅助线</button>
+          <button class="chip guide-chip" data-guide="thirds">三分</button>
+          <button class="chip guide-chip" data-guide="golden">黄金</button>
+          <button class="chip guide-chip" data-guide="cross">十字</button>
+        </span>
+        <span class="photo-group">
+          <button class="chip" id="btn-photo-close">✕ 退出 (V)</button>
+        </span>
+      </div>
+      <div class="photo-row photo-adj" aria-label="摄影调整">
+        <label>亮度 <input type="range" data-adj="brightness" min="0.5" max="1.5" step="0.01" value="1"><span data-adjv="brightness">1.00</span></label>
+        <label>对比度 <input type="range" data-adj="contrast" min="0.5" max="1.5" step="0.01" value="1"><span data-adjv="contrast">1.00</span></label>
+        <label>饱和度 <input type="range" data-adj="saturation" min="0" max="2" step="0.01" value="1"><span data-adjv="saturation">1.00</span></label>
+        <label>色温 <input type="range" data-adj="temperature" min="-1" max="1" step="0.02" value="0"><span data-adjv="temperature">0.00</span></label>
+        <button class="chip" id="btn-photo-adj-reset" title="四项调整回到中性值">复位调整</button>
+      </div>
     </div>
   </div>
 
@@ -196,7 +207,7 @@
 <div id="overlay">
   <div class="overlay-box">
     <div class="spinner" id="ov-spinner"></div>
-    <h2 id="ov-title">GARGANTUA</h2>
+    <h2 id="ov-title">GARGANTUA-ECHO</h2>
     <p id="ov-msg">正在初始化 WebGL…</p>
     <div id="ov-actions" hidden>
       <button class="btn" id="btn-safemode">安全模式</button>
