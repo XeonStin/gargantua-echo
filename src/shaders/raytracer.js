@@ -414,6 +414,7 @@ void main() {
   float dbgT = 0.0;
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
   float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
+  float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1;子采样快速预检用)
 
   // 初始加速度(弯曲常数每像素提出循环)
   float k = -1.5 * uRs * uLensing * h2;
@@ -430,21 +431,22 @@ void main() {
     // (物理形状不变:弱场区 Verlet 误差 ~dt²·a 仍远小于 1M;盘面穿越检测与步长无关)
     float dt = clamp(0.16 * (r - uRs * 0.9), 0.028, 3.2)
              * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
+    float hhStep = 0.0;
+    if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
+    bool densified = false;
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
-      // 薄层门控:加密只花在可能触到盘面薄层的光线上。|y| 远在薄层之外(且一个粗步长
-      // 内也够不到)的段保持与薄盘模式一致的步长 —— 盘区 ×0.28 的 3.6 倍步数是体积
-      // 模式帧耗大头;垂直采样截止(×5 半厚)+ 中面噪声偏移之外的段对画面零贡献。
-      // hMax 与 diskHalfHeight 的剖面常数保持同源(0.090 + 0.30·uDiskSoft, ×1.55, wv≤1.5)。
-      float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1)
-      float gate = 5.0 * hMax + 1.2;                        // 采样截止 + 中面噪声偏移裕量
+      // 薄层门控(半径相关):子采样有贡献要求 |sp.y| < 5.75×HH ≤ 8.625×dHH(r)
+      // (5×HH 采样截止 + 0.75×HH 中面噪声偏移,HH ≤ 1.5×dHH),门限取 8.7×dHH(r)+1.0。
+      // 外缘薄盘门限(≈1.7)远低于内缘(≈3.5)——掠过外盘上方的光线不再白吃加密步长;
+      // lookahead 取 0.6 步长:未加密段终点必然仍高于门限(更高于板顶),绝不跨板。
+      float gate = 8.7 * hhStep + 1.0;
       float ay = abs(pos.y);
-      if (ay < gate || ay - gate < abs(vel.y) * dt) {
-        dt *= 0.28; // 体积盘模式:盘区加密采样
+      if (ay < gate || ay - gate < abs(vel.y) * dt * 0.6) {
+        densified = true;
+        dt *= 0.40; // 体积盘模式:盘区加密采样(十轮由 0.28 放宽,4 子采样仍解析薄层,亮度按 ev∝segLen 自守恒)
         // 贴近盘面时按当地半厚再加密:外缘薄刃不再被大体积元一口吞掉
-        if (r > uDiskIn * 0.8) {
-          float hh = diskHalfHeight(r);
-          if (abs(pos.y) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
-        }
+        // (十轮:上限 hh→1.6hh,细分步长仍 ≤ 薄层特征厚度的 1/3)
+        if (r > uDiskIn * 0.8 && ay < hhStep * 3.0) dt = min(dt, max(0.06, hhStep * 1.6));
       }
     }
     float halfDt2 = 0.5 * dt * dt;
@@ -466,7 +468,15 @@ void main() {
         // 体积吸积盘:段内 4 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
         vec3 mid = mix(pos, npos, 0.5);
         float mr = diskRadius(mid);
-        if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0) {
+        // 壳层跳过:段不穿越中面、且整体位于贡献截止之外 → 整段零贡献,免 4 次子采样。
+        // 阈值分段保证保守:加密段(Δr ≤ 1.28M,dHH 梯度有界)用 10×dHH(r) ≥ 7.5×dHH(sr);
+        // 非加密粗段(Δr 可达 12M)必须用全局上界 10×hMax ≥ 7.5×max(dHH)。
+        // |y| 沿段线性 → 无符号翻转时 |y| ≥ 端点最小值。
+        bool crossY = (pos.y * npos.y < 0.0);
+        float yNear = min(abs(pos.y), abs(npos.y));
+        float yCut = densified ? (10.0 * hhStep) : (10.0 * hMax);
+        if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0 &&
+            (crossY || yNear < yCut)) {
           float segLen = length(npos - pos);
           vec3 vDir = normalize(nvel); // 提出子采样循环
           float ev = segLen * 0.125;   // 段积分权重(与子采样数同源,提出循环)
@@ -474,6 +484,7 @@ void main() {
             vec3 sp = mix(pos, npos, (float(s) + pixPh) * 0.25);
             float sr = diskRadius(sp);
             if (sr < uDiskIn * 0.82 || sr > uDiskOut) continue;
+            if (abs(sp.y) >= 5.0 * hMax) continue; // 远在薄层外:免 diskHalfHeight 求值
             float sH = diskHalfHeight(sr); // 半厚(内厚外薄,与 diskShade 同源)
             if (abs(sp.y) >= sH * 5.0) continue;
             vec4 dsk = diskShade(sp, vDir, uTime, 0.0);
@@ -652,6 +663,7 @@ void main() {
   float dbgT = 0.0;
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
   float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
+  float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1;子采样快速预检用)
 
   vec3 dX1 = vec3(0.0), dp1 = vec3(0.0), dX2 = vec3(0.0), dp2 = vec3(0.0);
   float dtL1 = 0.0, dtL2 = 0.0, r = r0;
@@ -665,17 +677,18 @@ void main() {
     // 自适应步长(λ 与坐标距离同量级:|dX| ≈ E ≈ 1)
     float dt = clamp(0.16 * (r - rH * 0.9), 0.028, 3.2)
              * (1.0 + 3.0 * smoothstep(uDiskOut, uDiskOut + 14.0, r));
+    float hhStep = 0.0;
+    if (uVolDisk > 0.5) hhStep = diskHalfHeight(r); // 本步标称半厚(门控/壳层跳过/细分共用,每步一次)
+    bool densified = false;
     if (uVolDisk > 0.5 && r < uDiskOut + 4.0) {
-      // 薄层门控(与 Verlet 路径同源):|世界 y|=|X.z| 远离盘面薄层的段不加密。
-      // 世界 y 方向速度 = KS 的 dX1.z(世界 y = KS Z)。
-      float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1)
-      float gate = 5.0 * hMax + 1.2;                        // 采样截止 + 中面噪声偏移裕量
+      // 薄层门控(与 Verlet 路径同源,半径相关):|世界 y|=|X.z|,世界 y 向速度 = KS 的 dX1.z。
+      float gate = 8.7 * hhStep + 1.0;
       float ay = abs(X.z);
-      if (ay < gate || ay - gate < abs(dX1.z) * dt) {
-        dt *= 0.28;
-        if (r > uDiskIn * 0.8) { // KS 坐标里世界 y = X.z
-          float hh = diskHalfHeight(r);
-          if (abs(X.z) < hh * 3.0) dt = min(dt, max(0.06, hh * 1.0));
+      if (ay < gate || ay - gate < abs(dX1.z) * dt * 0.6) {
+        densified = true;
+        dt *= 0.40; // 体积盘模式:盘区加密采样(十轮由 0.28 放宽,与 Verlet 路径同源)
+        if (r > uDiskIn * 0.8 && ay < hhStep * 3.0) { // KS 坐标里世界 y = X.z
+          dt = min(dt, max(0.06, hhStep * 1.6));
         }
       }
     }
@@ -701,7 +714,12 @@ void main() {
       if (uVolDisk > 0.5) {
         // 体积吸积盘:段内 4 子采样 + 逐像素相位抖动(否则等步长采样会出竖条纹)
         float mr = diskRadius(midW);
-        if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0) {
+        // 壳层跳过(与 Verlet 路径同源,阈值分段保证保守):|世界 y|=|X.z|
+        bool crossY = (X.z * nX.z < 0.0);
+        float yNear = min(abs(X.z), abs(nX.z));
+        float yCut = densified ? (10.0 * hhStep) : (10.0 * hMax);
+        if (mr > uDiskIn * 0.82 - 2.0 && mr < uDiskOut + 2.0 &&
+            (crossY || yNear < yCut)) {
           vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
           float ev = segLen * 0.125; // 段积分权重(与子采样数同源,提出循环)
           for (int s = 0; s < 4; s++) {
@@ -709,6 +727,7 @@ void main() {
             vec3 spW = vec3(spKS.x, spKS.z, -spKS.y);
             float sr = diskRadius(spW);
             if (sr < uDiskIn * 0.82 || sr > uDiskOut) continue;
+            if (abs(spW.y) >= 5.0 * hMax) continue; // 远在薄层外:免 diskHalfHeight 求值
             float sH = diskHalfHeight(sr);
             if (abs(spW.y) >= sH * 5.0) continue;
             vec4 dsk = diskShade(spW, vW, uTime, 0.0);
