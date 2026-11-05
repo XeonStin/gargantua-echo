@@ -73,6 +73,17 @@ export const QUALITIES = {
   safemode:  { label: '安全', prCap: 1.0, steps: 96,  bloomLevels: 3, volSub: 4, resFloor: 0.45 },
 };
 
+// 动态分辨率下限的用户可调范围(面板「最低分辨率」滑条/URL ?minscale=/API setMinScale)
+// 未显式设置时(state.minScale === null)跟随画质档的 resFloor
+export const RES_SCALE = { min: 0.2, max: 1.0, step: 0.05 };
+
+export function effectiveResFloor(state) {
+  if (typeof state.minScale === 'number' && isFinite(state.minScale)) {
+    return Math.min(RES_SCALE.max, Math.max(RES_SCALE.min, state.minScale));
+  }
+  return (QUALITIES[state.quality] || QUALITIES.high).resFloor ?? 0.45;
+}
+
 export const DEBUG_VIEWS = [
   '合成输出', '原始 HDR', '泛光缓冲', '积分步数', '命中分类',
   '多普勒因子', '引力红移', '盘面温度', '盘面穿越', '纯星空',
@@ -125,6 +136,7 @@ export function parseURL() {
     eht: bool('eht'),
     film: bool('film'),
     refcolor: bool('refcolor'),
+    minscale: num('minscale'),
     flyb: num('flyb'),
     tour: bool('tour'),
     guide: bool('guide'),
@@ -173,6 +185,7 @@ export function persist(state) {
         volDisk: state.volDisk,
         annotations: state.annotations, eht: state.eht, watermark: state.watermark,
         filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
+        minScale: state.minScale,
       }));
     } catch { /* 隐私模式等场景忽略 */ }
   }, 350);
@@ -194,6 +207,7 @@ export function initState() {
     filmGrade: true,     // 电影色调(胶片曲线 + 盘面双色带),默认开
     refColor: true,      // 参考配色(内缘白热 + 外缘橙褐),默认开
     flyBoundary: 2.7,    // 自由飞行安全边界(M;2.01 = 贴视界极限,时间膨胀 ~14×)
+    minScale: null,       // 动态分辨率下限倍率(null = 跟随画质档 resFloor)
     eht: false,          // EHT 对比模式
     watermark: false,    // 摄影模式:导出水印
     photo: false,        // 摄影模式叠加层(会话级,不持久化)
@@ -239,6 +253,9 @@ export function initState() {
       if (typeof saved.flyBoundary === 'number' && saved.flyBoundary >= 2.01 && saved.flyBoundary <= 3.0) {
         state.flyBoundary = saved.flyBoundary;
       }
+      if (typeof saved.minScale === 'number' && saved.minScale >= RES_SCALE.min && saved.minScale <= RES_SCALE.max) {
+        state.minScale = saved.minScale;
+      }
     }
   }
 
@@ -254,6 +271,11 @@ export function initState() {
   if (url.eht !== undefined) state.eht = url.eht;
   if (url.film !== undefined) state.filmGrade = url.film;
   if (url.refcolor !== undefined) state.refColor = url.refcolor;
+  // 0 或负值 = 自动(跟随画质档),与 UI「自动」按钮语义一致
+  if (url.minscale !== undefined) {
+    state.minScale = url.minscale <= 0 ? null
+      : Math.min(RES_SCALE.max, Math.max(RES_SCALE.min, url.minscale));
+  }
   if (url.flyb !== undefined) state.flyBoundary = Math.min(3.0, Math.max(2.01, url.flyb));
   if (url.tour !== undefined) state.tour = url.tour;
   if (url.s) state.share = url.s;

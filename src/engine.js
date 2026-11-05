@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RT_VERT, RT_FRAG, RT_FRAG_KERR } from './shaders/raytracer.js';
 import { POST_VERT, PREFILTER_FRAG, DOWN_FRAG, UP_FRAG, COMPOSITE_FRAG } from './shaders/post.js';
-import { QUALITIES } from './state.js';
+import { QUALITIES, RES_SCALE } from './state.js';
 import { bakeDiskTexture } from './disktex.js';
 
 // 黑体色查找表(与 raytracer.js 旧内联公式逐位一致,含饱和度提升)
@@ -121,6 +121,7 @@ export class Engine {
 
     this.quality = 'high';
     this.resScale = 1.0;   // 自适应动态分辨率(上限由质量档决定)
+    this.resFloorOverride = null; // 用户指定的下限倍率(null = 跟随画质档 resFloor)
     this.W = 2; this.H = 2;
 
     this.buildMaterials();
@@ -287,6 +288,24 @@ export class Engine {
     }
   }
 
+  // 动态分辨率下限:null = 跟随当前画质档;数值 = 用户面板/URL/API 指定的固定下限。
+  // 调高到当前倍率之上时立即抬回(resize 会重绘),否则等 adapt 按帧耗自然回落。
+  setResFloor(v) {
+    this.resFloorOverride = (typeof v === 'number' && isFinite(v))
+      ? Math.min(RES_SCALE.max, Math.max(RES_SCALE.min, v))
+      : null;
+    const floor = this.getResFloor();
+    if (this.resScale < floor - 1e-6) {
+      this.resScale = floor;
+      this.resize();
+    }
+  }
+
+  getResFloor() {
+    const q = QUALITIES[this.quality] || QUALITIES.high;
+    return this.resFloorOverride ?? q.resFloor ?? 0.45;
+  }
+
   // 自适应动态分辨率:帧时间过高压低,宽松时缓慢回升(上限受质量档约束)。
   // frameMs 只是 CPU 提交代价(GPU 满载时测不到);intervalEma−vsyncMin 补充掉帧信号:
   // rAF 间隔超出 vsync 周期的部分 ≈ GPU 真实超支,取两者较大者作为有效帧耗。
@@ -303,7 +322,7 @@ export class Engine {
     this._adaptCount = (this._adaptCount || 0) + 1;
     if (this._adaptCount < 50 || !this._lastAdapt) this._lastAdapt = performance.now();
     if (this._adaptCount % 90 !== 0) return;
-    const floor = q.resFloor ?? 0.45;
+    const floor = this.getResFloor();
     let s = this.resScale;
     if (this._ema > hi) { this._over = (this._over || 0) + 1; this._under = 0; }
     else if (this._ema < lo) { this._under = (this._under || 0) + 1; this._over = 0; }

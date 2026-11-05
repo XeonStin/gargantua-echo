@@ -92,6 +92,7 @@ html, body {
 .btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(255,179,71,.18); }
 .btn.active { background: rgba(255,179,71,.16); border-color: var(--accent); color: var(--accent); }
 .btn-icon { padding: 6px 9px; font-size: 13px; }
+.btn-mini { padding: 3px 7px; font-size: 11px; border-radius: 6px; }
 select.btn { cursor: pointer; }
 select.btn option { background: #111; color: var(--fg); }
 
@@ -144,7 +145,7 @@ select.btn option { background: #111; color: var(--fg); }
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--fg); border: 2px solid var(--accent);
 }
-#pv-flyboundary { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 30px; text-align: right; }
+#pv-flyboundary, #pv-minscale { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 36px; text-align: right; }
 
 .pgroup { margin-bottom: 14px; }
 .pgroup-title {

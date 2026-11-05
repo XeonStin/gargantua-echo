@@ -516,3 +516,37 @@ API `startGuide()`;`?guide=0` 显式禁止。自动化豁免:still/snap/webdrive
 桌面 2K 默认路径 4.49ms(预算 8.33ms 的 54% 余量),低档单像素成本较标准档 −60% 累计;
 经九~十四轮后着色器/管线已无"安全且有可观收益"的剩余项——近期实测在环境噪声(±30%)之下的
 改动一律不采纳(hhStep 门控 −2.7% 属原理性清理保留)。CPU 侧主循环分配已归零(十四轮)。
+
+## 20. 十六轮:最低分辨率下限滑条(2026-11-05)
+
+### 功能
+- 参数面板顶部新增「最低分辨率」滑条(0.20–1.00×,step 0.05)+ 数值读数 +「自动」按钮。
+  控制自适应动态分辨率的**硬下限**:帧耗过高时分辨率最多降到 原生×该倍率;1.0× = 锁定原生不自动降。
+- 默认「自动」= 跟随画质档 `resFloor`(低档 0.8×,标准/高/电影 0.45×);用户拖动后固定为自定义值
+  (跨画质档保持),「自动」按钮恢复跟随。
+- 链接:`state.minScale`(null=自动)持久化到 localStorage;URL `?minscale=0.2..1.0`(0/负数=自动);
+  API `setMinScale(0.2..1.0|null)`;`info()` 增 `minScale/resFloor/resScale`。
+- 应用时机:拖动 `input` 只更新状态/读数,松手 `change` 才写引擎并(必要时)重建管线,避免逐步
+  resize 卡顿;调高到当前倍率之上时立即 `resize()` 抬回(同 adapt 的 resize 路径,resize 内部重绘)。
+- 未改着色器;自动模式(false → 不设 override)下 `engine.getResFloor()` 仍取原 `q.resFloor`,
+  默认路径行为不变。v2.4.0。
+
+### 验证(IAB 1280×720,rAF 挂起,同步 API)
+| 项 | 结果 |
+| --- | --- |
+| 初始态 | cinematic / minScale=null / resFloor=0.45 / 滑条 0.45× / fill 31.25% /「自动」高亮;err=0 |
+| API | `setMinScale(0.8)` → minScale=0.8、floor=0.8、滑条 0.80×、自动灭;`setMinScale('abc')` 忽略(保持 null);`setMinScale(null)` → 自动 |
+| 拖动语义 | 模拟 `input` 0.6:state=0.6、显示 0.60×,engine floor 仍 0.8(未提交);`change` 后 floor=0.6 |
+| 自动跟随画质 | 自动 + low → floor 0.8 / 滑条 0.8;自动 + cinematic → 0.45 |
+| 显式跨档 | 显式 0.55 后切 low / cinematic,floor 均保持 0.55;再点自动回 0.45 |
+| URL | `?quality=standard&minscale=0.7` → minScale=0.7 / floor=0.7 / 滑条 0.70× / 自动灭;`?minscale=0&quality=low` → 自动 / floor 0.8 |
+| 持久化 | `setMinScale(0.65)` → localStorage 写入 0.65 → 无 reset 重载后 minScale=0.65 / 滑条 0.65 / 自动灭 |
+| 确定性 | `?reset=1&freeze=1&still=1&seed=5` 同页两次截图逐字节一致;新版哈希 **d76e64d0** |
+| 基线 A/B | git stash 三明治:旧版(v2.3.0)同环境同 URL 哈希 **d76e64d0**,新版(v2.4.0)复验 **d76e64d0** → 默认路径逐位不变 |
+| 布局 | 面板截图:滑条/读数/「自动」同排,桌面与 390px 手机宽度均无横向溢出(panel scrollWidth−clientWidth=0) |
+| 零错误 | 全流程 `window.__GARGANTUA_ERRORS__=[]`;测试后 localStorage 已清、恢复干净默认页 |
+
+### 未覆盖/说明
+- 「调高下限触发立即 resize」分支需 resScale<floor(仅自适应运行后可达);IAB 中 rAF 挂起、adapt
+  不运行,未做运行时观测——代码路径与 adapt 现有 resize 相同(单次 `resize()` + 内部重绘)。
+  正常默认态 resScale=1.0,调高下限不会触发重建(无画质跳变)。

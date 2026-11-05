@@ -1,5 +1,5 @@
 // GARGANTUA — UI:HUD 统计、24 参数面板、快捷键、Toast、覆盖层
-import { PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, DEFAULTS, LE_FRAMES } from './state.js';
+import { PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, DEFAULTS, LE_FRAMES, RES_SCALE } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,7 +16,7 @@ const TOGGLE_IDS = {
 
 export class UI {
   constructor(opts) {
-    this.o = opts; // { onParam, onQuality, onFpsCap, onExportSize, onPreset, onCine, onMusic, onScreenshot, onResetParams, onReseed, onView, onMode, onLongExposure, onExposureFrames, onGuide(摄影构图线), onStartGuide(功能引导) }
+    this.o = opts; // { onParam, onQuality, onMinScale, onFpsCap, onExportSize, onPreset, onCine, onMusic, onScreenshot, onResetParams, onReseed, onView, onMode, onLongExposure, onExposureFrames, onGuide(摄影构图线), onStartGuide(功能引导) }
     this.hud = $('hud');
     this.statLine = $('stat-line');
     this.physLine = $('phys-line');
@@ -171,6 +171,13 @@ export class UI {
       fb.addEventListener('input', () => this.o.onFlyBoundary(parseFloat(fb.value), { commit: false }));
       fb.addEventListener('change', () => this.o.onFlyBoundary(parseFloat(fb.value), { commit: true }));
     }
+    // 最低分辨率滑杆:拖动只更新显示/状态,松手才应用并重排渲染目标(避免每步 resize)
+    const ms = $('pr-minscale');
+    if (ms) {
+      ms.addEventListener('input', () => this.o.onMinScale(parseFloat(ms.value), { commit: false }));
+      ms.addEventListener('change', () => this.o.onMinScale(parseFloat(ms.value), { commit: true }));
+    }
+    $('btn-minscale-auto')?.addEventListener('click', () => this.o.onMinScale(null, { commit: true }));
     // 工具开关(aria-pressed 样式复用 .active)
     for (const [id, ev] of [
       ['tgl-voldisk', 'onVolDisk'],
@@ -227,6 +234,17 @@ export class UI {
       r.style.setProperty('--fill', `${pct}%`);
     }
     if (s) s.textContent = (+v).toFixed(2);
+  }
+
+  // 最低分辨率:auto = 跟随画质档(此时「自动」按钮高亮)
+  setMinScaleUI(v, auto) {
+    const r = $('pr-minscale'), s = $('pv-minscale'), b = $('btn-minscale-auto');
+    if (r) {
+      r.value = v;
+      this._fillRange(r, RES_SCALE.min, RES_SCALE.max, v);
+    }
+    if (s) s.textContent = `${(+v).toFixed(2)}×`;
+    if (b) b.classList.toggle('active', !!auto);
   }
 
   // ---------------- 开关 / 摄影 / 导览 / 成就 ----------------

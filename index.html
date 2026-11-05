@@ -110,6 +110,11 @@
       <input type="range" id="pr-flyboundary" min="2.01" max="3" step="0.01" value="2.7">
       <span id="pv-flyboundary">2.70</span>
     </label>
+    <label class="quality-line" title="动态分辨率下限:掉帧时最多降到原生分辨率的该倍率(1.0× = 锁定原生,不再自动降)">最低分辨率
+      <input type="range" id="pr-minscale" min="0.2" max="1" step="0.05" value="0.45">
+      <span id="pv-minscale">0.45×</span>
+    </label>
+    <button class="btn btn-mini" id="btn-minscale-auto" title="跟随当前画质档的默认下限">自动</button>
     <button class="btn" id="btn-reset-params">重置参数</button>
     <button class="btn" id="btn-reseed">随机星空种子</button>
     <div class="tool-row2">

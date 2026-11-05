@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/three/OrbitControls.js';
 import { Engine, iscoRadius, horizonRadius } from './engine.js';
-import { initState, persist, DEFAULTS, PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, FPS_CAPS, LE_FRAMES, EXPORT_SIZES } from './state.js';
+import { initState, persist, DEFAULTS, PARAM_META, PARAM_COUNT, QUALITIES, DEBUG_VIEWS, FPS_CAPS, LE_FRAMES, EXPORT_SIZES, RES_SCALE, effectiveResFloor } from './state.js';
 import { UI } from './ui.js';
 import { Cinematic, applyPreset, PRESETS } from './cinematic.js';
 import { AmbientAudio } from './audio.js';
@@ -111,6 +111,7 @@ const guide = new Guide(); // 功能引导(面板「引导」按钮 / 首访自�
 ui = new UI({
   onParam: (k, v) => setParam(k, v),
   onQuality: (q) => setQuality(q),
+  onMinScale: (v, opts) => setMinScale(v, opts),
   onFpsCap: (v) => setFpsCap(v),
   onExportSize: (v) => setExportSize(v),
   onLongExposure: (on) => setLongExposure(on),
@@ -185,6 +186,7 @@ try {
 }
 
 engine.setQuality(state.quality);
+engine.setResFloor(state.minScale); // null = 跟随画质档下限
 for (const [k, v] of Object.entries(state.params)) engine.setParam(k, v);
 engine.setSeed(state.seed);
 engine.setLongExposure(state.longExposure, state.exposureFrames);
@@ -268,9 +270,37 @@ function setQuality(q) {
   if (!QUALITIES[q] || q === 'safemode') return;
   state.quality = q;
   engine.setQuality(q);
+  engine.setResFloor(state.minScale); // 自动模式换档后跟随新档位下限
   ui.setQualityUI(q);
+  ui.setMinScaleUI(effectiveResFloor(state), state.minScale === null);
   persist(state);
   ui.toast(`画质 · ${QUALITIES[q].label}`);
+}
+
+// 最低分辨率倍率:null = 自动跟随画质档;拖动中只更新状态/显示,松手才应用
+// (resize 会重建整条管线,逐 input 事件重排会卡顿)
+function setMinScale(v, opts = {}) {
+  if (exporting) return;
+  let next;
+  if (v === null || v === undefined || v === '') next = null;
+  else {
+    const n = parseFloat(v);
+    if (!isFinite(n)) return; // 非法输入忽略,不把滑条误切到自动
+    next = n <= 0 ? null : +Math.min(RES_SCALE.max, Math.max(RES_SCALE.min, n)).toFixed(2);
+  }
+  state.minScale = next;
+  if (opts.commit !== false) {
+    engine.setResFloor(next);
+  }
+  const floor = effectiveResFloor(state);
+  ui.setMinScaleUI(floor, next === null);
+  persist(state);
+  if (opts.commit !== false) {
+    const q = QUALITIES[state.quality]?.label ?? state.quality;
+    ui.toast(next === null
+      ? `最低分辨率 · 自动(${q}档 ${floor.toFixed(2)}×)`
+      : `最低分辨率 · ${floor.toFixed(2)}×(帧率不足时不再低于此倍率)`);
+  }
 }
 
 function setMode(mode, opts = {}) {
@@ -622,6 +652,7 @@ ui.setExposureFramesUI(state.exposureFrames);
 ui.setParamsUI(state.params);
 ui.setToggleUI('volDisk', state.volDisk);
 ui.setFlyBoundaryUI(state.flyBoundary);
+ui.setMinScaleUI(effectiveResFloor(state), state.minScale === null);
 ui.setToggleUI('annotations', state.annotations);
 ui.setToggleUI('eht', state.eht);
 ui.setToggleUI('filmGrade', state.filmGrade);
@@ -917,7 +948,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.3.0',
+  version: '2.4.0',
   startGuide: () => guide.start(),
   ready: false,
   info() {
@@ -931,6 +962,7 @@ window.gargantua = {
       volDisk: state.volDisk,
       annotations: state.annotations, eht: state.eht, watermark: state.watermark,
       filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
+      minScale: state.minScale, resFloor: engine.getResFloor(), resScale: +engine.resScale.toFixed(3),
       geoArmed: state.geoArmed, tour: tour.active, tourStation: tour.station,
       achievements: ach.count + '/' + ach.total,
       steps: QUALITIES[state.quality].steps, mobile: IS_MOBILE,
@@ -943,6 +975,7 @@ window.gargantua = {
   getParams: () => ({ ...state.params }),
   setView(v) { setView(v); return state.view; },
   setQuality(q) { setQuality(q); return state.quality; },
+  setMinScale(v) { setMinScale(v === null || v === undefined ? null : +v, { commit: true }); return state.minScale; },
   setFpsCap(v) { setFpsCap(v | 0); return state.fpsCap; },
   setExportSize(id) { setExportSize(id); return state.exportSize; },
   setLongExposure(on) { setLongExposure(!!on); return state.longExposure; },

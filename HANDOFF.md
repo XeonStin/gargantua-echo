@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-05（十四轮：首访功能引导 + 十三轮审查修复）
+> 最后更新：2026-11-05（十六轮：最低分辨率下限滑条）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.2.0'`，24 参数，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.4.0'`，24 参数 + 最低分辨率下限设置，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -86,9 +86,9 @@ gargantua-echo/
 
 ## 5. URL / API 速查
 
-URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?exp ?fov ?vol ?anno ?eht ?film ?refcolor ?flyb ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`（`?stars` 已随真实星空移除）
+URL：`?preset ?mode ?view ?quality ?p= ?seed ?t ?fps ?le ?lef ?exp ?fov ?vol ?anno ?eht ?film ?refcolor ?flyb ?minscale ?tour ?s ?cine ?music ?hud ?panel ?freeze ?still ?snap ?safemode ?reset`（`?stars` 已随真实星空移除）
 
-API：`setParam/setParams/getParams、setView/setQuality/setPreset/setCine/setSeed、setFpsCap/setExportSize、
+API：`setParam/setParams/getParams、setView/setQuality/setMinScale/setPreset/setCine/setSeed、setFpsCap/setExportSize、
 setLongExposure/setExposureFrames、setVolDisk/setAnnotations/setEHT/setFilmGrade/setRefColor/setWatermark、
 setTour/setPhoto/setGeoArm/launchPhoton、setFlyBoundary、share/applyShareCode、renderFrames/renderOne/benchmark、
 screenshot/exportImage/screenshotDataUrl、info()`；`window.__LAST_EXPORT__`、`window.__GARGANTUA_ERRORS__`。
@@ -258,6 +258,14 @@ tour/s/panel/safemode/无HUD)一律豁免。**命名坑**:ui opts 的 `onGuide` 
 **十三轮(代码审查)**:修 adapt 跨档状态泄漏(setQuality 清零 _failScale/连击)、
 主循环对象分配归零、hhStep 盘区门控(远场免 pow);低档 ×0.55 壳层跳过经禁用 A/B
 逐位等价(9dca6c1f),安全边际确认。详 TESTREPORT §17。
+
+**十六轮(最低分辨率下限滑条)**:面板顶部新增「最低分辨率」滑条(0.20–1.00×,默认「自动」)
++「自动」按钮,控制自适应动态分辨率的硬下限。`state.minScale`(null = 自动跟随画质档
+`resFloor`;低档 0.8×,其余 0.45×),持久化 + `?minscale=`(0 = 自动)+ API `setMinScale`
+(info 输出 `minScale/resFloor/resScale`)。`engine.setResFloor` 调高到当前倍率之上时立即
+resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免逐步重建管线。默认路径
+(override=null)与旧版逐位一致:同环境 stash 三明治截图哈希 **d76e64d0 三连一致**。v2.4.0。
+详 TESTREPORT §20。
 
 ## 12. 待办 / 可选方向（均未开始，等用户指令）
 

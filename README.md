@@ -80,13 +80,17 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 ## 画质档
 
 - **低**:DPR 上限 1.0,96 积分步,3 级 Bloom,体积盘 2 子采样 + 盘区积分粗化
-  (加密 ×0.55/贴板细分 2.2hh/远场步长 ×6,**移动端默认**;动态分辨率下限 0.8×,
+  (加密 ×0.55/贴板细分 2.2hh/远场步长 ×6,**移动端默认**;默认动态分辨率下限 0.8×,
   自适应伺服 ~30fps——用帧率换清晰度,分辨率优先)
 - **标准**:DPR 上限 1.5,128 积分步,4 级 Bloom
 - **高**:DPR 上限 2.0,192 步,5 级 Bloom
 - **电影**:DPR 上限 2.0,320 步,6 级 Bloom(桌面默认)
 - 各档均以原生 CSS 分辨率 × DPR 渲染,帧耗过高时自适应动态分辨率自动下调
-  (目标带按档位:默认 7.5–9ms 伺服 60fps;低档 20–26ms 伺服 ~30fps;其余下限 0.45×)
+  (目标带按档位:默认 7.5–9ms 伺服 60fps;低档 20–26ms 伺服 ~30fps;其余默认下限 0.45×)
+- **最低分辨率**(面板顶部滑条 / `?minscale=` / API `setMinScale`):动态分辨率的硬下限,
+  0.20–1.00×。默认「自动」跟随画质档(低档 0.8×,其余 0.45×);拖动后固定为自定义值并跨画质档
+  保持,调到 **1.0× = 锁定原生分辨率不再自动降**。「自动」按钮恢复跟随画质档。
+  拖动中只更新显示,松手才应用(避免逐步重建渲染管线的卡顿)
 - 低档粗化都是「同一积分的更粗求积」:亮度按权重补偿自守恒,物理(测地线/多普勒/红移)不变
 - **帧率限制**:面板内可选 不限/30/60/90/120/144/165(令牌桶节流,跳过帧不推进时间)
 - **长曝光**:后期分组开关 + 曝光帧数滑杆(2–64)。帧累积(EMA,RGBA16F 单缓冲 alpha 混合)。
@@ -127,6 +131,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 | `?fov=25..110` | 初始视场角 |
 | `?vol=1` / `?anno=1` / `?eht=1` / `?film=0/1` / `?refcolor=0/1` | 体积盘 / 标注 / EHT / 电影色调 / 参考配色 |
 | `?flyb=2.01..3.0` | 自由飞行安全边界(米制 M;越小时间膨胀越强) |
+| `?minscale=0.2..1.0` | 动态分辨率下限倍率(0 = 自动跟随画质档;1.0 = 锁定原生分辨率) |
 | `?tour=1` | 自动开始导览 |
 | `?guide=1/0` | 强制弹出 / 禁止功能引导(默认:首访自动) |
 | `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**) |
@@ -139,12 +144,13 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.3.0):
+**JS API**(`window.gargantua` v2.4.0):
 
 ```js
 gargantua.ready / info()
 gargantua.setParam(k,v) / setParams(obj) / getParams()
 gargantua.setView(0..9) / setQuality(q) / setPreset(0..3) / setCine(b) / setSeed(n)
+gargantua.setMinScale(0.2..1.0 | null)  // 动态分辨率下限;null = 自动跟随画质档
 gargantua.setFpsCap(0|30|60|90|120|144|165) / setExportSize('screen'|'4k'|'8k')
 gargantua.setLongExposure(b) / setExposureFrames(2..64)
 gargantua.setVolDisk(b) / setAnnotations(b) / setEHT(b) / setFilmGrade(b) / setRefColor(b) / setWatermark(b)
