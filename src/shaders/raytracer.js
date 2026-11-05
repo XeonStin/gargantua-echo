@@ -205,51 +205,7 @@ float diskHalfHeight(float r) {
   return (0.090 + 0.30 * uDiskSoft) * mix(1.55, 0.42, pow(rg, 0.65));
 }
 
-// 盘面细节纹理的手动双线性采样(纹理用 NearestFilter)。
-// 线性过滤走隐式 LOD/导数路径,在体积循环的发散分支里不稳定(实测同帧多次
-// 渲染偶发 2/255 级差异)。改成 4 个 nearest tap 手动插值,绕开该路径,
-// 观感与线性过滤一致;环境级 GPU 双稳态仍可能存在(原始代码同样复现)。
-float diskTexBilinear(vec2 uv) {
-  const float SZ = 512.0; // disktex.js 烘焙尺寸
-  vec2 t = uv * SZ - 0.5;
-  vec2 i = floor(t);
-  vec2 f = t - i;
-  vec2 u0 = fract((i + 0.5) / SZ);
-  vec2 u1 = fract((i + 1.5) / SZ);
-  float a = texture2D(uDiskTex, vec2(u0.x, u0.y)).r;
-  float b = texture2D(uDiskTex, vec2(u1.x, u0.y)).r;
-  float c = texture2D(uDiskTex, vec2(u0.x, u1.y)).r;
-  float d = texture2D(uDiskTex, u1).r;
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-// 体积盘用的细节纹理采样:每像素只在统一控制流里采一次。
-// 体积循环里逐样本 texture2D 在发散分支中会走隐式 LOD/导数路径,且每样本
-// 一次采样成本高;提前到主函数后采样点固定、走统一控制流,并省掉
-// 逐样本纹理采样(体积模式性能与原始代码持平,观感更连贯)。
-float diskPlaneDetail(vec3 hp, float tNow) {
-  float r = diskRadius(hp);
-  float rg01 = clamp((r - uDiskIn) / max(uDiskOut - uDiskIn, 0.001), 0.0, 1.0);
-  float rMid = sqrt(max(uDiskIn * uDiskOut, 1.0));
-  float OmegaRef = pow(rMid, -1.5) * uDiskSpeed;
-  vec3 pr = rotY(hp, -OmegaRef * tNow);
-  float ang = atan(pr.z, pr.x);
-  float th01 = ang * 0.15915494 + 0.5;
-  float warpR = rg01 + 0.05 * (vnoise(vec3(cos(ang) * 9.0, sin(ang) * 9.0, 2.0)) - 0.5);
-  vec3 q = pr * 3.20 * (uTurbScale * 0.33333334);
-  float dw = vnoise(q * 0.42 + vec3(11.3, 4.7, 8.1));
-  return diskTexBilinear(vec2(warpR * 2.2, th01 * 2.0 + dw * 0.10));
-}
-
-// 未弯曲相机光线与赤道面的代表交点(体积盘纹理坐标用):
-// 朝向盘面时取直线交点;背向/近平行时取离原点最近点,保证坐标连续有限。
-vec3 diskRepPoint(vec3 ro, vec3 rd) {
-  float t0 = abs(rd.y) > 0.04 ? -ro.y / rd.y : -dot(ro, rd);
-  if (t0 <= 0.0) t0 = max(0.0, -dot(ro, rd));
-  return ro + rd * t0;
-}
-
-vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine, float detailTex) {
+vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine) {
   float r = diskRadius(hp);
 
   // --- 边缘先算(廉价),盘外提前退出,省去噪声开销 ---
@@ -345,20 +301,17 @@ vec4 diskShade(vec3 hp, vec3 vdir, float tNow, float fine, float detailTex) {
     fineMul = mix(0.20, 1.75, smoothstep(0.30, 0.78, f1 * f2));
   }
 
-  // --- 有机细节纹理 ---
-  // 薄盘(fine=1):穿越点唯一,直接在交点采样(θ 用圆周 warp + 整数重复 → 无接缝)。
-  // 体积盘(fine=0):用主函数在统一控制流里预采样的 detailTex —— 体积循环里逐样本
-  // 采 texture2D 在发散分支下走隐式 LOD/导数,多次渲染会出现 2/255 级浮动。
-  float detail;
-  if (fine > 0.5) {
-    float ang = atan(pr.z, pr.x);
-    float th01 = ang * 0.15915494 + 0.5;
-    float warpR = rg01 + 0.05 * (vnoise(vec3(cos(ang) * 9.0, sin(ang) * 9.0, 2.0)) - 0.5);
-    // v 方向必须是整数倍重复:1.6 会让 θ 在 2π 回绕处跳 0.6 个纹理周期 → 一圈明显接痕
-    detail = diskTexBilinear(vec2(warpR * 2.2, th01 * 2.0 + dw * 0.10));
-  } else {
-    detail = detailTex;
-  }
+  // --- 有机细节纹理:按样本实际位置 (θ, r) 采样 ---
+  // θ 用圆周坐标 warp + 整数重复 → 跨 ±π 无接缝。
+  // 必须在当前样本位置采样(而不是每像素预采样):透镜像/近侧内缘的纹理
+  // 锚点必须跟着真实穿越点走,否则远侧盘面会出现拉伸/扭转的怪异条纹。
+  float ang = atan(pr.z, pr.x);
+  float th01 = ang * 0.15915494 + 0.5;
+  // 圆周半径要匹配旧版沿 θ 的噪声路径长度(0..9):2π·1.45 ≈ 9.1。
+  // 用 *9 会让圆周路径长达 2π·9≈56,角向 warp 频率高 6 倍 → 盘面扭成放射状怪纹。
+  float warpR = rg01 + 0.05 * (vnoise(vec3(cos(ang) * 1.45, sin(ang) * 1.45, 2.0)) - 0.5);
+  // v 方向必须是整数倍重复:1.6 会让 θ 在 2π 回绕处跳 0.6 个纹理周期 → 一圈明显接痕
+  float detail = texture2D(uDiskTex, vec2(warpR * 2.2, th01 * 2.0 + dw * 0.10)).r;
   float det = clamp(pow(detail, 1.4) * 2.2, 0.10, 1.8);
 
   // ---- 参考项目的薄片盘模型:覆盖率 × 尘埃色 + 垂直光晕 ----
@@ -472,9 +425,6 @@ void main() {
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
   float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
   float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1;子采样快速预检用)
-  // 体积盘细节纹理:每像素一次,统一控制流(见 diskPlaneDetail 注释)
-  float detail0 = 0.5;
-  if (uVolDisk > 0.5) detail0 = diskPlaneDetail(diskRepPoint(ro, rd), uTime);
 
   // 初始加速度(弯曲常数每像素提出循环)
   float k = -1.5 * uRs * uLensing * h2;
@@ -522,7 +472,9 @@ void main() {
         if (tc < dt) {
           vec3 hpE = pos + vel * tc;
           float hrE = diskRadius(hpE);
-          if (hrE > uDiskIn * 0.82 && hrE < uDiskOut) {
+          // 只保护中/外盘穿越:内圈(r < 1.6 r_in)的步长本来就被薄层门控压小,
+          // 额外加密会让近侧内缘的白热带更硬、更像"嵌进"阴影;保留旧版软边观感。
+          if (hrE > uDiskIn * 1.6 && hrE < uDiskOut) {
             dt = min(dt, max(0.028, tc * 0.85));
           }
         }
@@ -570,7 +522,7 @@ void main() {
             if (abs(sp.y) >= 5.0 * hMax) continue; // 远在薄层外:免 diskHalfHeight 求值
             float sH = diskHalfHeight(sr); // 半厚(内厚外薄,与 diskShade 同源)
             if (abs(sp.y) >= sH * 5.0) continue;
-            vec4 dsk = diskShade(sp, vDir, uTime, 0.0, detail0);
+            vec4 dsk = diskShade(sp, vDir, uTime, 0.0);
             // 吸收系数单独加大:让盘在视线进入后的前一小段就变不透明,
             // 否则掠射时会积完整条 15M 路径,细结构全被平均
             float av = clamp(dsk.a * ev, 0.0, 1.0);
@@ -594,7 +546,7 @@ void main() {
         vec3 hp = mix(pos, npos, ft);
         float hr = diskRadius(hp);
         if (hr > uDiskIn * 0.82 && hr < uDiskOut) {
-          vec4 dsk = diskShade(hp, normalize(nvel), uTime, 1.0, detail0);
+          vec4 dsk = diskShade(hp, normalize(nvel), uTime, 1.0);
           col += trans * dsk.rgb * dsk.a;
           trans *= 1.0 - dsk.a;
           crossings += 1.0;
@@ -747,9 +699,6 @@ void main() {
   g_gDop = 1.0; g_gGrav = 1.0; g_T = 0.0;
   float pixPh = hash13(vec3(gl_FragCoord.xy, 2.3)); // 体积盘子采样相位(逐像素常数,提升出循环)
   float hMax = (0.090 + 0.30 * uDiskSoft) * 1.55 * 1.5; // 全盘最大半厚(内缘, wv=1;子采样快速预检用)
-  // 体积盘细节纹理:每像素一次,统一控制流(与 Verlet 路径同源)
-  float detail0 = 0.5;
-  if (uVolDisk > 0.5) detail0 = diskPlaneDetail(diskRepPoint(ro, rd), uTime);
 
   vec3 dX1 = vec3(0.0), dp1 = vec3(0.0), dX2 = vec3(0.0), dp2 = vec3(0.0);
   float dtL1 = 0.0, dtL2 = 0.0, r = r0;
@@ -789,7 +738,8 @@ void main() {
           float xE = X.x + dX1.x * tc;
           float yE = X.y + dX1.y * tc;
           float hrE = sqrt(max(xE * xE + yE * yE - aL * aL, 0.01));
-          if (hrE > uDiskIn * 0.82 && hrE < uDiskOut) {
+          // 与 Verlet 路径同源:内圈(r < 1.6 r_in)不额外做中面保护
+          if (hrE > uDiskIn * 1.6 && hrE < uDiskOut) {
             dt = min(dt, max(0.028, tc * 0.85));
           }
         }
@@ -837,7 +787,7 @@ void main() {
             if (abs(spW.y) >= 5.0 * hMax) continue; // 远在薄层外:免 diskHalfHeight 求值
             float sH = diskHalfHeight(sr);
             if (abs(spW.y) >= sH * 5.0) continue;
-            vec4 dsk = diskShade(spW, vW, uTime, 0.0, detail0);
+            vec4 dsk = diskShade(spW, vW, uTime, 0.0);
             float av = clamp(dsk.a * ev, 0.0, 1.0);
             col += trans * dsk.rgb * ev;
             trans *= 1.0 - av;
@@ -860,7 +810,7 @@ void main() {
         float hr = diskRadius(hpW);
         if (hr > uDiskIn * 0.82 && hr < uDiskOut) {
           vec3 vW = normalize(vec3(dX2.x, dX2.z, -dX2.y));
-          vec4 dsk = diskShade(hpW, vW, uTime, 1.0, detail0);
+          vec4 dsk = diskShade(hpW, vW, uTime, 1.0);
           col += trans * dsk.rgb * dsk.a;
           trans *= 1.0 - dsk.a;
           crossings += 1.0;

@@ -1052,7 +1052,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.0',
+  version: '2.5.1',
   startGuide: () => guide.start(),
   ready: false,
   info() {

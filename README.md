@@ -146,7 +146,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.5.0):
+**JS API**(`window.gargantua` v2.5.1):
 
 ```js
 gargantua.ready / info()
