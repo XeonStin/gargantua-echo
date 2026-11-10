@@ -44,6 +44,7 @@ python serve.py 5300        # 或 python serve.py(默认 5300)
 | `0`–`9` | 调试视图:合成 / 原始HDR / 泛光 / 积分步数 / 命中分类 / 多普勒 / 引力红移 / 盘温 / 穿越次数 / 纯星空 |
 | `P` / `Esc` | 设置面板(24 项物理参数 + 画质/累积模式,分组滑杆) |
 | `T` | **导览模式**:7 站中文之旅(自动飞行 + 字幕,可打断) |
+| `B` | **坠入之旅**:参考 NASA 超算模拟的脚本化运镜——远景绕转一周 → 穿越吸积盘 → 贴盘俯冲 → 坠向事件视界(黑场谢幕),全程字幕解说物理 |
 | `V` | **摄影模式**:胶片风格预设 + 构图线 + 亮度/对比度/饱和度/色温 + 导出水印 |
 | `N` | **物理标注**:阴影 b_c=√27·M / 视界 r+ / ISCO 理论位置投影 |
 | `H` / 双击 | 显示/隐藏 HUD |
@@ -80,7 +81,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 | **水印** | 导出 PNG 左下角附参数摘要(等效 EXIF) |
 | **弹弓** | 点击画面发射一圈光子:CPU 端用与着色器同源的 Kerr-Schild 方程积分,真实弯曲轨迹叠加显示。**拖拽只移动视角、不会误发射**(位移 >6px 视为拖拽);再次点击追加新扇,最多保留 3 组(旧扇渐淡),便于对照轨迹 |
 
-工具按钮:**导览**(T)、**摄影**(V)、**成就**(13 项图鉴,localStorage 持久化)、**分享**(复制含全部参数与相机的链接)、**导入**(粘贴 `?s=` 分享码)。
+工具按钮:**导览**(T)、**坠入**(B,参考 NASA 超算模拟的绕转-穿盘-坠向视界之旅)、**摄影**(V)、**成就**(14 项图鉴,localStorage 持久化)、**分享**(复制含全部参数与相机的链接)、**导入**(粘贴 `?s=` 分享码)。
 
 ## 画质档
 
@@ -141,6 +142,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 | `?flyb=2.01..3.0` | 自由飞行安全边界(米制 M;越小时间膨胀越强) |
 | `?minscale=0.2..1.0` | 动态分辨率下限倍率(0 = 自动跟随画质档;1.0 = 锁定原生分辨率) |
 | `?tour=1` | 自动开始导览 |
+| `?plunge=1` | 直达「坠入之旅」(B) |
 | `?guide=1/0` | 强制弹出 / 禁止功能引导(默认:首访自动) |
 | `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**;飞行模式还带完整朝向含 QE 滚转) |
 | `?cine=0/1` `?music=0/1` `?hud=0/1` `?panel=0/1` | 模式开关 |
@@ -152,7 +154,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.5.4):
+**JS API**(`window.gargantua` v2.5.5):
 
 ```js
 gargantua.ready / info()
@@ -163,7 +165,7 @@ gargantua.setFpsCap(0|30|60|90|120|144|165) / setExportSize('screen'|'4k'|'8k')
 gargantua.setLongExposure(b) / setAccumMode('taa'|'le') / setExposureFrames(2..64)
 gargantua.setVolDisk(b) / setAnnotations(b) / setEHT(b) / setFilmGrade(b) / setRefColor(b) / setWatermark(b)
 gargantua.getPhotoAdj() / setPhotoAdj({brightness,contrast,saturation,temperature})
-gargantua.setTour(b) / setPhoto(b) / setGeoArm(b) / launchPhoton(ndcX, ndcY)
+gargantua.setTour(b) / setPlunge(b) / setPhoto(b) / setGeoArm(b) / launchPhoton(ndcX, ndcY)
 gargantua.startGuide()             // 打开功能引导(首访自动;面板「引导」可重开)
 gargantua.share()                    // 生成分享链接
 gargantua.applyShareCode('...')      // 导入分享码
@@ -211,8 +213,9 @@ gargantua-echo/
 │   ├── flight.js         # 自由飞行模式(WASD + Q/E 滚转 + 拖拽环视)
 │   ├── geodesic.js       # 光子弹弓:CPU 端 Kerr-Schild 积分 + 轨迹叠加
 │   ├── annotations.js    # 物理标注:理论位置投影(SVG)
-│   ├── achievements.js   # 成就系统(13 项,localStorage)
+│   ├── achievements.js   # 成就系统(14 项,localStorage)
 │   ├── tour.js           # 7 站中文导览(相机飞行 + 字幕)
+│   ├── plunge.js         # 坠入之旅(参考 NASA 模拟的脚本化运镜:绕转→穿盘→坠向视界)
 │   ├── photomode.js      # 胶片风格预设 / 构图线 / 水印文本
 │   ├── sharecode.js      # 参数分享码(base64url)
 │   ├── disktex.js        # 吸积盘有机细节纹理(本地程序化烘焙,可平铺)

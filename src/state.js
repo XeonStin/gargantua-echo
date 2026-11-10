@@ -149,6 +149,7 @@ export function parseURL() {
     minscale: num('minscale'),
     flyb: num('flyb'),
     tour: bool('tour'),
+    plunge: bool('plunge'),
     guide: bool('guide'),
     s: q.get('s') || undefined,
     t: num('t'),
@@ -227,6 +228,7 @@ export function initState() {
     photo: false,        // 摄影模式叠加层(会话级,不持久化)
     geoArmed: false,     // 光子弹弓待发(会话级)
     tour: false,         // ?tour=1 启动导览(会话级)
+    plunge: false,       // ?plunge=1 直达坠入之旅(会话级)
     share: null,         // ?s= 分享码(会话级)
     view: 0,
     preset: null,     // ?preset= 初始视角预设(回归修复:此前解析了但从未应用)
@@ -302,6 +304,7 @@ export function initState() {
   }
   if (url.flyb !== undefined) state.flyBoundary = Math.min(3.0, Math.max(2.01, url.flyb));
   if (url.tour !== undefined) state.tour = url.tour;
+  if (url.plunge !== undefined) state.plunge = url.plunge;
   if (url.s) state.share = url.s;
   for (const [k, v] of Object.entries(url.params)) {
     const cv = clampParamValue(k, v);

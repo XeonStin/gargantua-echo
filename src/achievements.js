@@ -13,6 +13,7 @@ export const ACH_DEFS = [
   { id: 'views',       name: '全景观察者',   desc: '看遍全部 10 个调试视图' },
   { id: 'slinger',     name: '弹弓手',       desc: '发射 5 次光子扇' },
   { id: 'scholar',     name: '学者',         desc: '完成导览全部 7 站' },
+  { id: 'plunge',      name: '越界者',       desc: '完成「坠入之旅」:绕转、穿盘、坠向视界' },
   { id: 'cinephile',   name: '影院观众',     desc: '完整看完一循环 96s 电影镜头' },
   { id: 'astrophys',   name: '天体物理学家', desc: '把自旋推到 0.9 以上' },
 ];

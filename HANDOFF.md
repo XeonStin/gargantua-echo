@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-11（二十轮：全量代码审查 / 导出原子性 / NaN 守卫 v2.5.4）
+> 最后更新：2026-11-11（二十一轮：坠入之旅——参考 NASA 模拟的绕转穿盘坠向视界运镜 v2.5.5）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.5.4'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.5.5'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -33,8 +33,9 @@ gargantua-echo/
 │   ├── flight.js         # 自由飞行（WASD+R/F，子步积分，安全边界）
 │   ├── geodesic.js       # 光子弹弓（CPU 端同源 KS 积分 + LineSegments 叠加）
 │   ├── annotations.js    # 物理标注（阴影/视界/ISCO 投影 SVG）
-│   ├── achievements.js   # 13 项成就（localStorage）
+│   ├── achievements.js   # 14 项成就（localStorage）
 │   ├── tour.js           # 7 站中文导览
+│   ├── plunge.js         # 坠入之旅(脚本化运镜,参考 NASA 超算模拟)
 │   ├── photomode.js      # 胶片风格预设 / 构图线 / 水印文本
 │   ├── sharecode.js      # 参数分享码（base64url ?s=）
 │   ├── disktex.js        # 吸积盘有机细节纹理（本地可平铺 FBM 烘焙）
@@ -83,7 +84,7 @@ gargantua-echo/
 - **HUD 按钮**：循环 / 飞行 / 导览 / 摄影 / 🏆 成就 / 音乐 / 截图 / 画质 / 设置
 - **快捷键**：Space/O/C/G、Shift+1-4、0-9、P/H/M/S/V/T/N、R/Shift+R、F；飞行中 Q/E 滚转
   （Q/E 不再切画质/EHT；画质走顶栏/面板下拉，EHT 走开关）
-- **其他**：导览 7 站（T）、摄影模式（V）、成就 13 项（顶栏 🏆 / 设置面板）、分享码（?s=，
+- **其他**：导览 7 站（T）、**坠入之旅**（B，二十一轮：绕转→穿盘→坠向视界，见 §12e）、摄影模式（V）、成就 14 项（顶栏 🏆 / 设置面板）、分享码（?s=，
   飞行模式含完整朝向与滚转，见 §12c）、
   时间膨胀显示、自旋自动跟 ISCO、Kerr 喷流、4K/8K 导出（屏幕/4K/8K）
 - （九轮移除：真实星空/耶鲁星表烘焙——观感不佳，`src/stars.js`、`assets/data/bright-stars.js`、
@@ -407,6 +408,25 @@ no-op 且 4K 导出正常完成 ✓;默认冻结截图 stash 三明治**逐像�
 恒定 ✓;滚转分享码往返逐位一致(roll 0.9)✓;0 错误 ✓。基准:view0≈view9≈72ms
 @1600×900×320步(本会话环境底噪主导,盘面拆分不可测;像素 diff=0 已从结构上排除回归)。
 详 TESTREPORT §25。
+
+## 12e. 二十一轮(坠入之旅:参考 NASA 模拟的脚本化游览,v2.5.5,2026-11-11)
+
+用户需求:「参考 NASA 模拟坠入黑洞做一个绕转坠入黑洞的游览」(NASA Goddard 超算可视化,
+Schnittman & Buonanno——远景绕转一周→穿越吸积盘→坠向视界)。
+
+- **新模块 `src/plunge.js`**:76s 四幕脚本化运镜——①远景绕转整圆(36→32M,26s);
+  ②俯冲穿盘(极角加速越过 90°,穿面点设计在盘内 ~0.82×(32−rX)+rX,|y|=0.03 实测,
+  白屏 ~0.8s;穿面半径按用户盘参数自适应 rX=clamp(2.2×inner,10,max(11,outer−1.5)));
+  ③贴盘俯冲(拉升出盘再滑向黑洞,二次穿盘即"钻出");④加速坠向 r=2.05M(渲染物理
+  有效区边缘),T_TURN=65s 起 4 秒转身背对黑洞看身后宇宙(NASA 标志性回头),黑场
+  (CSS #plunge-fade,2.6s)在 69.5s 渐入,76s 收尾回远景。轨迹纯参数曲线,自身时钟
+  按渲染帧 dt 累加,确定性。
+- **接线**:renderOne 驱动链 plunge 分支(与 cine/fly 同级);setMode/gotoPreset 在
+  plunge 期间拒绝抢占;setTour(false) 在坠入期间 = 退出坠入(复用导览字幕卡,
+  `#tour.plunge` 隐藏上一/下一站);HUD「⤓ 坠入」+面板按钮+B 快捷键+`?plunge=1`+
+  API `setPlunge`/测试钩子 `_plungeSeek`;新成就「越界者」(13→14 项)。
+- **物理边界**:不真正穿越视界——渲染器只在视界外积分有效;黑场 = 信号中断的叙事表达。
+  穿盘两次短暂进入体积盘(相机在介质内),近场成本由自适应分辨率吸收。
 
 ## 13. 八轮(参考配方盘面重写,2026-11-04)
 

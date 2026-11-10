@@ -13,6 +13,7 @@ import { Annotations } from './annotations.js';
 import { Achievements } from './achievements.js';
 import { Guide } from './guide.js';
 import { Tour } from './tour.js';
+import { PlungeTour } from './plunge.js';
 import { FILM_LOOKS, buildWatermark } from './photomode.js';
 import { buildShareURL, decodeShare } from './sharecode.js';
 
@@ -104,6 +105,18 @@ const tour = new Tour(camera, {
   onStop: () => { syncFovFromCamera(); ui?.hideTour(); }, // 导览直接改了 camera.fov,交还给参数/滑块
   onComplete: () => ach.track('tour'),
 });
+// 坠入之旅(参考 NASA Goddard 超算可视化):脚本化运镜,复用导览字幕卡
+const plungeDisk = { inner: 0, outer: 0 }; // 复用对象:主循环每帧零分配
+const plunge = new PlungeTour(camera, {
+  getDisk: () => {
+    plungeDisk.inner = state.params.diskInner;
+    plungeDisk.outer = state.params.diskOuter;
+    return plungeDisk;
+  },
+  onCaption: (i, st) => ui?.showPlungeCaption(i, st),
+  onFade: (on) => ui?.setPlungeFade(on),
+  onDone: (finished) => endPlunge(finished),
+});
 
 // ---------------- 致命错误覆盖层 ----------------
 function fatal(msg) {
@@ -144,6 +157,8 @@ ui = new UI({
   onTour: (on) => setTour(on),
   onTourNext: () => tour.next(),
   onTourPrev: () => tour.prev(),
+  onPlungeToggle: () => setPlunge(!plunge.active),
+  onPlungeExit: () => setPlunge(false),
   onPhoto: (on) => setPhoto(on),
   onGeoArm: (on) => setGeoArmed(on),
   onFilmLook: (id) => applyFilmLook(id),
@@ -337,6 +352,7 @@ function setMinScale(v, opts = {}) {
 
 function setMode(mode, opts = {}) {
   if (exporting) return; // 导出期间冻结相机模式切换
+  if (plunge.active) return; // 坠入之旅独占相机:模式切换/预设/快捷键不得抢占
   const prev = state.mode;
   const leavingCine = prev === 'cine' && mode !== 'cine';
   // 导览进行中用户显式切换模式 → 结束导览,避免两套相机驱动打架
@@ -429,6 +445,7 @@ function setExposureFrames(n, opts = {}) {
 }
 
 function gotoPreset(i, silent) {
+  if (plunge.active) return; // 脚本运镜独占相机
   applyPreset(i, camera, controls);
   if (state.mode === 'cine') setMode('orbit', { silent: true }); // 只发预设自己的 toast,避免双 toast 互相覆盖
   if (state.mode === 'fly') setMode('orbit', { silent: true }); // 预设接管相机
@@ -621,12 +638,49 @@ function setGeoArmed(on) {
 
 function setTour(on) {
   if (exporting) return;
+  // 坠入之旅复用导览字幕卡:字幕卡上的「退出」在坠入期间 = 退出坠入
+  if (!on && plunge.active) return setPlunge(false);
   if (on) {
+    if (plunge.active) setPlunge(false);
     if (state.mode !== 'orbit') setMode('orbit', { silent: true });
     tour.start(0);
     ui.toast('导览开始 · T 或「退出」结束');
   } else {
     tour.stop();
+  }
+}
+
+// ---------------- 坠入之旅 ----------------
+function setPlunge(on, opts = {}) {
+  if (exporting) return;
+  on = !!on;
+  if (on === plunge.active) return;
+  if (on) {
+    if (tour.active) setTour(false, { silent: true });
+    if (state.mode !== 'orbit') setMode('orbit', { silent: true });
+    controls.enabled = false; // 脚本运镜期间接管相机,用户输入不抢
+    plunge.start();
+    ui.setPlungeUI(true);
+    if (!opts.silent) ui.toast('坠入之旅 · 开始 — B 或「退出」随时离开');
+  } else {
+    plunge.stop();
+    endPlunge(false, opts);
+  }
+}
+
+function endPlunge(finished, opts = {}) {
+  controls.enabled = true;
+  // 坠点(r≈2.05)在轨道相机 minDistance 之内,不能原地交还——回到远景全景
+  applyPreset(0, camera, controls);
+  syncFovFromCamera();
+  ui.setPlungeUI(false);
+  ui.hidePlunge();
+  ui.setPlungeFade(false);
+  if (finished) {
+    ach.unlock('plunge');
+    if (!opts.silent) ui.toast('坠入之旅结束 · 已返回远景');
+  } else if (!opts.silent) {
+    ui.toast('已退出坠入之旅');
   }
 }
 
@@ -802,6 +856,8 @@ if (state.mode === 'fly') {
   flight.enter();
   ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视');
 }
+// ?plunge=1 直达坠入之旅
+if (state.plunge) setPlunge(true, { silent: true });
 
 // 音乐:自动尝试 + 首次手势兜底(浏览器自动播放策略)
 if (state.music) {
@@ -893,7 +949,8 @@ function renderOne() {
     camera.updateProjectionMatrix();
   }
   if (!tour.active) {
-    if (state.mode === 'cine') cine.update(simTime);
+    if (plunge.active) plunge.update(loopDt); // 坠入之旅:脚本运镜独占
+    else if (state.mode === 'cine') cine.update(simTime);
     else if (state.mode === 'fly') flight.update(loopDt, flyMinR());
     else controls.update();
   }
@@ -1086,7 +1143,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.4',
+  version: '2.5.5',
   startGuide: () => guide.start(),
   ready: false,
   info() {
@@ -1104,6 +1161,7 @@ window.gargantua = {
       filmGrade: state.filmGrade, refColor: state.refColor, flyBoundary: state.flyBoundary,
       minScale: state.minScale, resFloor: engine.getResFloor(), resScale: +engine.resScale.toFixed(3),
       geoArmed: state.geoArmed, tour: tour.active, tourStation: tour.station,
+      plunge: plunge.active,
       achievements: ach.count + '/' + ach.total,
       steps: QUALITIES[state.quality].steps, mobile: IS_MOBILE,
       seed: state.seed, time: +simTime.toFixed(3), params: { ...state.params },
@@ -1134,6 +1192,9 @@ window.gargantua = {
     return { ...state.photoAdj };
   },
   setTour(on) { setTour(!!on); return tour.active; },
+  setPlunge(on) { setPlunge(!!on); return plunge.active; },
+  // 测试钩子:跳转到坠入之旅的时间点(秒),下一渲染帧补发错过的字幕
+  _plungeSeek(sec) { plunge._t = Math.max(0, +sec || 0); return +plunge._t.toFixed(2); },
   setPhoto(on) { setPhoto(!!on); return state.photo; },
   setGeoArm(on) { setGeoArmed(!!on); return state.geoArmed; },
   launchPhoton(ndcX = 0, ndcY = 0) {

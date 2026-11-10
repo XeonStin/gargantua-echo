@@ -198,6 +198,9 @@ export class UI {
     const map = {
       'btn-tour': () => this.o.onTour(!this._tourActive),
       'btn-tour-hud': () => this.o.onTour(!this._tourActive),
+      'btn-plunge': () => this.o.onPlungeToggle?.(),
+      'btn-plunge-hud': () => this.o.onPlungeToggle?.(),
+      'btn-plunge-panel': () => this.o.onPlungeToggle?.(),
       'btn-photo': () => this.o.onPhoto(!this._photoOpen),
       'btn-photo-hud': () => this.o.onPhoto(!this._photoOpen),
       'btn-ach': () => { this.toggleAch(); },
@@ -345,6 +348,42 @@ export class UI {
     for (const id of ['btn-tour', 'btn-tour-hud']) $(id)?.classList.add('active');
   }
 
+  // ---------------- 坠入之旅(复用导览字幕卡,隐藏上一/下一站) ----------------
+  showPlungeCaption(i, st) {
+    this._plungeActive = true;
+    const t = $('tour');
+    if (!t) return;
+    t.classList.add('on', 'plunge');
+    const ex = $('tour-exit');
+    if (ex) ex.textContent = '退出 (B)';
+    if (st) {
+      $('tour-title').textContent = st.name;
+      $('tour-text').textContent = st.text;
+      $('tour-prog').textContent = st.prog;
+    } else {
+      $('tour-title').textContent = '坠入之旅';
+      $('tour-text').textContent = '即将启程:绕转 → 穿越吸积盘 → 贴盘俯冲 → 坠向事件视界……(B 或「退出」随时离开)';
+      $('tour-prog').textContent = '准备';
+    }
+  }
+
+  hidePlunge() {
+    this._plungeActive = false;
+    $('tour')?.classList.remove('on', 'plunge');
+    const ex = $('tour-exit');
+    if (ex) ex.textContent = '退出 (T)';
+  }
+
+  setPlungeFade(on) {
+    $('plunge-fade')?.classList.toggle('on', !!on);
+  }
+
+  setPlungeUI(on) {
+    for (const id of ['btn-plunge', 'btn-plunge-hud', 'btn-plunge-panel']) {
+      $(id)?.classList.toggle('active', !!on);
+    }
+  }
+
   hideTour() {
     this._tourActive = false;
     const t = $('tour');
@@ -444,6 +483,7 @@ export class UI {
         case 'KeyO': this.o.onMode('orbit'); break;
         case 'KeyC': this.o.onMode('cine'); break;
         case 'KeyG': this.o.onFlyToggle(); break;
+        case 'KeyB': this.o.onPlungeToggle?.(); break;
         case 'KeyH': this.toggleHud(); break;
         case 'KeyP': this.togglePanel(); break;
         case 'KeyM': this.o.onMusic(); break;
@@ -453,7 +493,7 @@ export class UI {
         case 'KeyV': this.o.onPhoto(!this._photoOpen); break;
         case 'KeyN': this.o.onAnnotations(!this._annoOn); break;
         case 'KeyR': this.o[e.shiftKey ? 'onResetParams' : 'onResetView'](); break;
-        case 'Escape': this.togglePanel(false); this.toggleAch(false); if (this._photoOpen) this.o.onPhoto(false); break;
+        case 'Escape': this.togglePanel(false); this.toggleAch(false); if (this._photoOpen) this.o.onPhoto(false); if (this._plungeActive) this.o.onPlungeExit?.(); break;
         default:
           if (e.code.startsWith('Digit')) {
             const d = parseInt(e.code.slice(5));

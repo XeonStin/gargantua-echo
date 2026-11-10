@@ -44,6 +44,7 @@
       <button class="btn" id="btn-cine" title="电影镜头循环 (Space)">▶ 循环</button>
       <button class="btn" id="btn-fly" title="自由飞行 (G):WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视">✈ 飞行</button>
       <button class="btn" id="btn-tour-hud" title="7 站中文导览 (T)">◎ 导览</button>
+      <button class="btn" id="btn-plunge-hud" title="坠入之旅 (B):绕转 → 穿越吸积盘 → 贴盘俯冲 → 坠向事件视界 · 参考 NASA 超算模拟">⤓ 坠入</button>
       <button class="btn" id="btn-photo-hud" title="摄影模式:胶片风格 + 构图线 + 亮度/对比度 (V)">◉ 摄影</button>
       <button class="btn btn-icon" id="btn-ach-hud" title="成就图鉴">🏆</button>
       <button class="btn" id="btn-music" title="氛围音乐 (M)">♪ 音乐</button>
@@ -63,7 +64,7 @@
     <div class="legend">
       <span><b>Space</b> 循环</span><span><b>O/C/G</b> 轨道/镜头/飞行</span><span><b>Shift+1-4</b> 预设</span>
       <span><b>0-9</b> 调试视图</span><span><b>H</b> HUD</span><span><b>P</b> 面板</span>
-      <span><b>M</b> 音乐</span><span><b>S</b> 截图</span><span><b>V</b> 摄影</span><span><b>T</b> 导览</span>
+      <span><b>M</b> 音乐</span><span><b>S</b> 截图</span><span><b>V</b> 摄影</span><span><b>T</b> 导览</span><span><b>B</b> 坠入</span>
       <span><b>N</b> 标注</span><span><b>R</b> 复位</span><span><b>F</b> 全屏</span>
       <span><b>飞行 Q/E</b> 滚转</span><span><b>拖拽/滚轮</b> 环绕/缩放</span>
     </div>
@@ -129,6 +130,7 @@
     </div>
     <div class="tool-row2">
       <button class="btn" id="btn-tour" title="7 站中文导览 (T)">导览</button>
+      <button class="btn" id="btn-plunge" title="坠入之旅 (B):绕转 → 穿越吸积盘 → 坠向视界 · 参考 NASA 超算模拟">坠入</button>
       <button class="btn" id="btn-photo" title="摄影模式:胶片风格 + 构图线 (V)">摄影</button>
       <button class="btn" id="btn-ach" title="成就图鉴">🏆 成就</button>
       <button class="btn" id="btn-music-panel" title="氛围音乐">♪ 音乐</button>
@@ -173,7 +175,7 @@
     </div>
   </div>
 
-  <!-- ======================= 导览字幕 ======================= -->
+  <!-- ======================= 导览字幕 / 坠入之旅字幕(复用卡片) ======================= -->
   <div id="tour" aria-live="polite">
     <div class="tour-card">
       <div class="tour-head">
@@ -189,10 +191,13 @@
     </div>
   </div>
 
+  <!-- 坠入之旅黑场(越过视界的信号中断;字幕卡 z-index 更高保持可读) -->
+  <div id="plunge-fade" aria-hidden="true"></div>
+
   <!-- ======================= 成就图鉴 ======================= -->
   <aside id="ach" aria-label="成就" hidden>
     <div class="panel-head">
-      <h2>成就 <span class="count" id="ach-count">0 / 13</span></h2>
+        <h2>成就 <span class="count" id="ach-count">0 / 14</span></h2>
       <button class="btn btn-icon" id="btn-ach-close" title="关闭 (Esc)">✕</button>
     </div>
     <div id="ach-list"><!-- JS 生成 --></div>
