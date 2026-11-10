@@ -25,6 +25,10 @@ export class Flight {
 
     this._onKey = (e) => {
       if (!this.active) return;
+      // 正在面板输入框/下拉里打字时不吞按键:否则飞行中编辑 FOV 数字框,
+      // 敲 "35" 会把 W/S 当成前进后退(数字框里 3/5 无效,但 W/A/D/R/F 都会动)
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.type === 'keydown') this.keys.add(e.code);
       else this.keys.delete(e.code);
     };

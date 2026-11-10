@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-11（十九轮：4K 导出滚转修复 / 分享码携带飞行朝向 v2.5.3）
+> 最后更新：2026-11-11（二十轮：全量代码审查 / 导出原子性 / NaN 守卫 v2.5.4）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.5.3'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.5.4'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -65,7 +65,7 @@ gargantua-echo/
   导出期间 `exporting` 冻结主循环/参数/模式切换。
 
 ### 吸积盘着色（diskShade，两条路径共用）
-- 湍流 = 刚体旋转(Ω_ref) + 有界差速剪切（**基准取盘外缘 Ω_outer，diff≥0 保证内外同向**，×5 放大，双相位防无限剪切）；
+- 湍流 = 刚体旋转(Ω_ref) + 有界差速剪切（**基准取盘外缘 Ω_outer，diff≥0 保证内外同向**，×2 放大，双相位防无限剪切）；
 - 丝状层 = 各向异性柱坐标（切向 ×0.55）上 4 层 vnoise **相乘**；
 - 细节纹理 = `uDiskTex`（disktex.js 烘焙）按 (θ·3, r·1.6) 采样，`clamp(detail²·4,0.1,1.7)` 混合 0.5；
 - 内缘白热环 = Lorentzian `0.9/((rimDist·14)²+0.06)`，密度门控、体积盘 ×0.35；
@@ -382,6 +382,31 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
 - **方法论**:①跨页面会话截图哈希再次证实不可比(两次加载 67819500 vs 700e8128,
   像素 diff 却为 0)——判定渲染影响必须同页面像素 diff 或 stash 三明治;②IAB rAF 挂起是
   动态的,依赖逐帧推进的测试用 `renderOne()×N` 同步驱动。
+
+## 12d. 二十轮(全量代码审查:导出原子性 / NaN 守卫 / 输入隔离,v2.5.4,2026-11-11)
+
+全部 20 个源文件通读复审(shader 逐行)。**渲染路径零改动**(下证),JS 编排层修复:
+
+- **P2 setParam 总闸**:`gargantua.setParam('spin','abc')` 经 parseFloat→NaN→clampParam(NaN)
+  直进 uniform 黑屏无报错(十八轮只修了分享码参数表,API 路径裸奔)。setParam 内
+  `isFinite` 总闸;Infinity 按 clamp 语义夹回上限(设计行为,非毒药)。
+- **P2 导出原子性家族**:`exporting=true` 期间仍能踩踏离屏管线的路径全堵——
+  `reseed()`/API `setSeed`(改 uSeedOff)、`applyShareCode`(seed+photoAdj 绕过守卫)、
+  `setView`(invalidateAccum 重置 TAA 多帧导出累积)、`setPhotoAdj`(合成 uniform)。
+- **P2 飞行输入隔离**:flight 的 window keydown 不看 e.target,面板输入框里打 "35"
+  会触发 W/A/D 前后移动。INPUT/SELECT/TEXTAREA 目标忽略。
+- **P3**:engine.dispose 漏 matAccum;achievements 死字段 `_viewCue`;annotations
+  投影用上一帧 matrixWorldInverse(运动时叠加层滞后 1-2 帧)→ update 内
+  `cam.updateMatrixWorld()`(仅运动时走到,静止已被跳过);HANDOFF 差速剪切 ×5→×2 文档漂移。
+- **性能结论**:JS 热路径已零分配(十三/十八轮),shader 侧十轮已证无安全余量——本轮
+  不动逐位输出。
+
+**验收(IAB,同步 API)**:NaN 全拒绝/Infinity 夹回 0.998 ✓;飞行 INPUT 打字 d=0 / window
+正常 d=4.7 ✓;导出中 setView+setSeed+setParam+applyShareCode+setPhotoAdj 五路踩踏全部
+no-op 且 4K 导出正常完成 ✓;默认冻结截图 stash 三明治**逐像素 diff=0** ✓;确定性 6 连拍
+恒定 ✓;滚转分享码往返逐位一致(roll 0.9)✓;0 错误 ✓。基准:view0≈view9≈72ms
+@1600×900×320步(本会话环境底噪主导,盘面拆分不可测;像素 diff=0 已从结构上排除回归)。
+详 TESTREPORT §25。
 
 ## 13. 八轮(参考配方盘面重写,2026-11-04)
 

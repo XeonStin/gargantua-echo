@@ -665,7 +665,7 @@ export class Engine {
 
   dispose() {
     this.disposeTargets();
-    [this.matRT, this.matRTKerr, this.matPre, this.matDown, this.matUp, this.matComp].forEach(m => m?.dispose());
+    [this.matRT, this.matRTKerr, this.matPre, this.matDown, this.matUp, this.matAccum, this.matComp].forEach(m => m?.dispose());
     this.bbTex?.dispose();
     this.diskTex?.dispose();
     this.mesh.geometry.dispose();

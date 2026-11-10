@@ -738,3 +738,35 @@ OrbitControls 的 `update()` 会把相机重新 `lookAt(target)`,QE 滚转(连�
   stash 三明治为准,跨页面哈希只能做参考。
 - IAB 的 rAF 挂起是动态的:同一标签页早先 rAF 存活(fps=60),稍后 `time` 冻结在 0。
   依赖逐帧推进的测试(飞行滚转积分)用 `renderOne()`×N 同步驱动,不赌 rAF 存活。
+
+## 25. 二十轮:全量代码审查——导出原子性 / NaN 守卫 / 输入隔离(v2.5.4,2026-11-11)
+
+全部 20 个源文件通读(含 shader 逐行)。渲染路径零改动,修复全部在 JS 编排层。
+
+### 修复清单
+| 级别 | 问题 | 修复 |
+| --- | --- | --- |
+| P2 | 公开 API NaN 直通:`gargantua.setParam('spin','abc')` → parseFloat NaN → clampParam 的 Math.min/max 放行 → uniform NaN → 黑屏无报错(十八轮只修了分享码参数表) | setParam 内 isFinite 总闸;Infinity 按 clamp 语义夹回上限 |
+| P2 | 导出原子性:`exporting` 期间 `reseed()`/`setSeed`(uSeedOff)、`applyShareCode`(seed/photoAdj 绕过守卫)、`setView`(invalidateAccum 重置 TAA 导出累积)、`setPhotoAdj`(合成 uniform)仍可踩踏离屏管线 | 五处入口补 `if (exporting) return` |
+| P2 | 飞行模式 window keydown 不看 e.target:面板输入框打 "35" 触发 W/A/D 移动 | INPUT/SELECT/TEXTAREA 目标忽略 |
+| P3 | engine.dispose 漏 matAccum | 补入 dispose 列表 |
+| P3 | achievements `_viewCue` 只写不读 | 删除 |
+| P3 | annotations.update 在 renderOne 之前调用,投影用上一帧 matrixWorldInverse → 运动时叠加层滞后 1-2 帧 | update 内 cam.updateMatrixWorld()(仅运动时走到,静止被跳过分支挡住,每 2 帧一次 4×4 求逆可忽略) |
+| P3 | HANDOFF 差速剪切放大系数写 ×5,代码是 ×2 | 文档改正 |
+
+### 性能结论
+JS 热路径已零分配(十三/十八轮两轮补漏后无新发现);shader 侧十轮已验证无安全改动空间
+(步数/步长/子采样均已在位,再动必然破坏逐位输出)。本轮唯一性能相关改动是
+annotations 运动时多一次 4×4 求逆(每 2 帧,纳秒级)。
+
+### 验证(IAB,同步 API)
+| 项 | 结果 |
+| --- | --- |
+| NaN 注入 | setParam/setParams 全部拒绝('abc'/NaN/'NaN'/'xyz'),参数逐键不变;Infinity 夹回 0.998;合法字符串 '0.7' 正常生效;0 错误 |
+| 飞行输入隔离 | keydown target=INPUT + renderOne×30:位移 d=0;target=window:正常移动 d=4.7 |
+| 导出原子性 | 4K 导出进行中 setView(3)/setSeed(99)/setParam('spin',0.9)/applyShareCode(垃圾码)/setPhotoAdj 五路踩踏全部 no-op,导出正常完成 3840×2160,状态零变化,0 错误 |
+| 默认渲染零改动 | ?reset=1&freeze=1&still=1&seed=5 冻结截图 1600×900,stash 三明治新旧代码**逐像素 diff=0** |
+| 确定性 | 同页面冻结 6 连拍哈希恒定 |
+| 分享码回归 | 用户码进 fly + 滚转 0.9 → share/apply/share 往返逐位一致 |
+| 性能 | view0≈view9≈72ms @1600×900×320 步——本会话 IAB 环境底噪主导(盘面 GPU 成本被淹没,与历史 1.6-3.6× 漂移一致);渲染路径像素 diff=0 从结构上排除回归 |
+| 零错误 | 全流程 `__GARGANTUA_ERRORS__=[]` |

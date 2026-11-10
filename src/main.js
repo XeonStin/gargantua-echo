@@ -256,6 +256,10 @@ function setParam(key, v, opts = {}) {
   if (exporting) return;
   if (!(key in DEFAULTS)) return;
   v = clampParam(key, v);
+  // 公开 API(setParam/setParams 传字符串)经 parseFloat 可能得到 NaN/Infinity:
+  // clampParam 的 Math.min/max 会原样放行,NaN 进 uniform 会整页黑屏且无报错
+  // (十八轮只修了分享码参数表的逐键守卫,这里补上总闸)。
+  if (!isFinite(v)) return;
   state.params[key] = v;
   if (key === 'diskInner') {
     // 物理约束:盘内缘不得进入 ISCO 以内(那里没有稳定圆轨道)
@@ -533,6 +537,7 @@ function resetParams() {
 }
 
 function reseed() {
+  if (exporting) return; // setSeed 改 uSeedOff,导出中重摇种子会污染输出帧
   state.seed = (Math.random() * 1000000) | 0;
   engine.setSeed(state.seed);
   persist(state);
@@ -540,6 +545,7 @@ function reseed() {
 }
 
 function setView(v) {
+  if (exporting) return; // invalidateAccum 会把 TAA 多帧导出的累积清重来
   state.view = Math.min(9, Math.max(0, v | 0));
   // TAA/长曝光的累积缓冲是旧调试视图的画面,不丢弃会混影若干帧
   engine.invalidateAccum();
@@ -657,6 +663,7 @@ function applyFilmLook(id) {
 }
 
 function setPhotoAdj(key, v) {
+  if (exporting) return; // 改合成 pass uniform,导出中调整会污染剩余帧
   const m = PHOTO_ADJ_META.find(x => x.key === key);
   if (!m || typeof v !== 'number' || !isFinite(v)) return;
   if (!state.photo) photoBase = null; // 模式外改调整 → 下次进入重新取基准
@@ -698,6 +705,7 @@ function importShareCode(str) {
 }
 
 function applyShareCode(s) {
+  if (exporting) return; // 导出原子性:分享码会改 seed/参数/模式,会踩踏离屏管线
   const m = s.match(/(?:\?|&)s=([A-Za-z0-9\-_]+)/);
   const code = m ? m[1] : s;
   const obj = decodeShare(code);
@@ -1078,7 +1086,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.3',
+  version: '2.5.4',
   startGuide: () => guide.start(),
   ready: false,
   info() {
@@ -1176,7 +1184,7 @@ window.gargantua = {
     return { r, polar: +(polar * 180 / Math.PI).toFixed(1), az: +(az * 180 / Math.PI).toFixed(1), fov: +camera.fov.toFixed(1) };
   },
   setCine(on) { setMode(on ? 'cine' : 'orbit'); return state.mode; },
-  setSeed(s) { state.seed = s | 0; engine.setSeed(state.seed); persist(state); return state.seed; },
+  setSeed(s) { if (exporting) return state.seed; state.seed = s | 0; engine.setSeed(state.seed); persist(state); return state.seed; },
   setMusic(on) { if (on !== audio.enabled) toggleMusic(); return audio.enabled; },
   resetParams,
   resetView: () => gotoPreset(0, true),

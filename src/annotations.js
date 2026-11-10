@@ -62,6 +62,10 @@ export class Annotations {
     this._lqz = cam.quaternion.z; this._lqw = cam.quaternion.w;
     this._lfov = cam.fov; this._lasp = cam.aspect;
     this._lspin = spin; this._ldin = diskIn; this._ldout = diskOut;
+    // 主循环在 renderOne 之前调本函数:位置/四元数刚被 cine/fly/controls 更新,
+    // 但 matrixWorld(Inverse) 还是上一帧渲染的旧矩阵 → 投影滞后 1-2 帧。
+    // 这里就地刷新(仅运动时走到,静止被上方跳过;每 2 帧一次 4×4 求逆可忽略)。
+    cam.updateMatrixWorld();
     if (!this._vec) {
       this._vec = new cam.position.constructor();
       this._v = new cam.position.constructor();

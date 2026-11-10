@@ -29,7 +29,6 @@ export class Achievements {
     this._shots = 0; this._params = 0; this._fans = 0;
     this._views = new Set(); this._presets = new Set();
     this._leTime = 0; this._cineTime = 0; this._closeTime = 0;
-    this._viewCue = false;
   }
 
   _save() {
