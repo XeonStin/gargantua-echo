@@ -12,6 +12,12 @@
 没有任何贴图/视频/截图**。原生 HTML/CSS/JavaScript + ES Modules + 本地 Three.js r170
 (vendor 内置),零构建,任何静态服务器可直接运行。
 
+## 实机效果图
+
+![实机渲染:Kerr 黑洞与吸积盘(飞行模式 QE 滚转镜头,浏览器实机截图,无后期)](assets/real-shot.png)
+
+*飞行模式实机画面:自由视角(QE 滚转)+ 体积吸积盘 + 透镜成像,浏览器直接截图,未经任何后期处理。*
+
 ## 在线版
 
 - 线上地址：<https://xeonstin.github.io/gargantua-echo/>
@@ -136,7 +142,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 | `?minscale=0.2..1.0` | 动态分辨率下限倍率(0 = 自动跟随画质档;1.0 = 锁定原生分辨率) |
 | `?tour=1` | 自动开始导览 |
 | `?guide=1/0` | 强制弹出 / 禁止功能引导(默认:首访自动) |
-| `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**) |
+| `?s=分享码` | 载入分享的场景(参数+相机+画质+种子+**全部开关状态**;飞行模式还带完整朝向含 QE 滚转) |
 | `?cine=0/1` `?music=0/1` `?hud=0/1` `?panel=0/1` | 模式开关 |
 | `?freeze=1` | 冻结动画时间(确定性截图) |
 | `?still=1` | 渲染 36 帧后停止 rAF(供 API 截图) |
@@ -146,7 +152,7 @@ URL `?guide=1` 强制弹出、`?guide=0` 禁止;API `startGuide()`。
 示例:`http://127.0.0.1:5300/?reset=1&freeze=1&still=1&seed=5&preset=1&spin=0.9&jetPower=1.5`
 → 确定性的 Kerr 喷流场景;`?tour=1` → 7 站中文导览。
 
-**JS API**(`window.gargantua` v2.5.2):
+**JS API**(`window.gargantua` v2.5.3):
 
 ```js
 gargantua.ready / info()

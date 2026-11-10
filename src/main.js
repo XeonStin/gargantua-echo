@@ -475,9 +475,11 @@ async function exportImage(name, sizeId = state.exportSize) {
   ui.toast(`正在导出 ${size.label} ${size.w}×${size.h}…`);
   console.log(`[GARGANTUA] export start: ${size.label} ${size.w}×${size.h} · LE=${state.longExposure}`);
   try {
-    // 与 renderOne 相同的相机推进:确保预设/电影循环/阻尼的最新姿态进入导出
+    // 与 renderOne 相同的相机推进:确保预设/电影循环/阻尼的最新姿态进入导出。
+    // 飞行模式例外:姿态已由主循环 flight.update 维护到位,这里再调 controls.update()
+    // 会把相机重新 lookAt(target),QE 滚转(连同环视姿态)在 4K/8K 导出里全部丢失。
     if (state.mode === 'cine') cine.update(simTime);
-    else controls.update();
+    else if (state.mode !== 'fly') controls.update();
     camera.updateMatrixWorld();
     engine.updateCamera(camera);
     const res = await engine.renderExport({
@@ -734,14 +736,27 @@ function applyShareCode(s) {
   else if (obj.le) setAccumMode('le', { silent: true });
   if (typeof obj.lf === 'number') setExposureFrames(obj.lf);
   setLongExposure(!!obj.le);
-  if (Array.isArray(obj.c) && obj.c.length === 4 && obj.c.every(v => typeof v === 'number' && isFinite(v))) {
-    setMode('orbit', { silent: true });
+  // 相机:c 4 元素(旧码 [x,y,z,fov])或 7 元素(v2.5.3 飞行码,追加 yaw/pitch/roll 含 QE 滚转)。
+  // m:'fly' 恢复飞行模式——旧 4 元素码没有朝向,由位置对准原点推出姿态(滚转 0);
+  // 新 7 元素码在 setMode('fly')→flight.enter() 前写好欧拉角,滚转原样恢复。
+  if (Array.isArray(obj.c) && (obj.c.length === 4 || obj.c.length === 7)
+      && obj.c.every(v => typeof v === 'number' && isFinite(v))) {
     camera.position.set(obj.c[0], obj.c[1], obj.c[2]);
     camera.fov = Math.min(110, Math.max(25, obj.c[3]));
     camera.updateProjectionMatrix();
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    controls.update();
+    if (obj.m === 'fly') {
+      camera.lookAt(0, 0, 0);
+      if (obj.c.length === 7) {
+        camera.rotation.order = 'YXZ';
+        camera.rotation.set(obj.c[5], obj.c[4], obj.c[6]); // pitch, yaw, roll
+      }
+      setMode('fly', { silent: true });
+    } else {
+      setMode('orbit', { silent: true });
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
     syncFovFromCamera(false);
   }
   ui.toast('已载入分享的场景');
@@ -1063,7 +1078,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.2',
+  version: '2.5.3',
   startGuide: () => guide.start(),
   ready: false,
   info() {

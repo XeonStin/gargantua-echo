@@ -1,7 +1,7 @@
 # GARGANTUA gargantua-echo — 会话对接文档（Handoff）
 
 > 用途：压缩上下文后的续接说明。读完本文件 + README.md + TESTREPORT.md 即可无缝接手。
-> 最后更新：2026-11-06（十八轮：移动端 HUD 遮挡修复 / 代码审查 v2.5.2）
+> 最后更新：2026-11-11（十九轮：4K 导出滚转修复 / 分享码携带飞行朝向 v2.5.3）
 
 ---
 
@@ -14,7 +14,7 @@
 | 启动 | `cd gargantua-echo && python serve.py 5300` → `http://127.0.0.1:5300/`（本会话后台任务，进程可能已结束，重启即可） |
 | 技术栈 | 原生 HTML/CSS/JS + ES Modules + 本地 three r170（vendor）+ 零构建 + 静态服务器 |
 | 核心 | 全屏 Fragment Shader 实时积分黑洞零测地线；**Schwarzschild 速度 Verlet** + **Kerr-Schild 哈密顿**双路径 |
-| 当前版本 | `window.gargantua.version = '2.5.2'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
+| 当前版本 | `window.gargantua.version = '2.5.3'`，24 参数 + TAA/长曝光 + 最低分辨率 + 摄影调整，API 见 README |
 | 当前状态 | 干净默认态（filmGrade 开 / 24 参数 / localStorage 已清 / 0 控制台错误）；服务器 5300 |
 
 ## 2. 文件架构
@@ -83,7 +83,8 @@ gargantua-echo/
 - **HUD 按钮**：循环 / 飞行 / 导览 / 摄影 / 🏆 成就 / 音乐 / 截图 / 画质 / 设置
 - **快捷键**：Space/O/C/G、Shift+1-4、0-9、P/H/M/S/V/T/N、R/Shift+R、F；飞行中 Q/E 滚转
   （Q/E 不再切画质/EHT；画质走顶栏/面板下拉，EHT 走开关）
-- **其他**：导览 7 站（T）、摄影模式（V）、成就 13 项（顶栏 🏆 / 设置面板）、分享码（?s=）、
+- **其他**：导览 7 站（T）、摄影模式（V）、成就 13 项（顶栏 🏆 / 设置面板）、分享码（?s=，
+  飞行模式含完整朝向与滚转，见 §12c）、
   时间膨胀显示、自旋自动跟 ISCO、Kerr 喷流、4K/8K 导出（屏幕/4K/8K）
 - （九轮移除：真实星空/耶鲁星表烘焙——观感不佳，`src/stars.js`、`assets/data/bright-stars.js`、
   `tools/gen_stars.py` 已删除；`?stars=` 与 `setRealStars` API 不复存在，旧分享码的 `t.rs` 字段被忽略）
@@ -363,6 +364,24 @@ resize 抬回;拖动中只更新状态/显示,松手(`change`)才应用,避免�
 - **验证**:默认视图哈希 `c6811b12…` 改前改后逐字节一致(Kerr 路径在内,渲染零改动);
   冻结确定性 `70579587…` 一致;全程 0 错误;损坏分享码非法值全跳过、合法值生效;
   分享码静态往返逐键一致。详 TESTREPORT §23。
+
+## 12c. 十九轮(4K 导出滚转修复 + 分享码携带飞行朝向,v2.5.3,2026-11-11)
+
+**用户反馈**:飞行模式 QE 滚转后导出 4K 没有滚转;"屏幕"档正常。
+
+- **根因**:`exportImage` 导出前统一调 `controls.update()` 推进 cine/orbit 姿态——飞行模式下
+  OrbitControls.update() 会把相机重新 lookAt(target),滚转与环视姿态整体被抹掉。
+  修复:fly 分支**不做任何相机操作**(姿态已由主循环 flight.update 维护)。
+- **分享码 v1 增量**:飞行模式 `c` = `[x,y,z,fov,yaw,pitch,roll]`(7 元素,YXZ 欧拉与 flight.js
+  同序,3 位小数);解码按长度区分,旧 4 元素码零影响。`obj.m` 字段首次接线(此前只写不读):
+  `m:'fly'` 恢复飞行模式,旧 4 元素码由位置对准原点推姿态(滚转 0),新 7 元素码在
+  `setMode('fly')→flight.enter()` 前写好欧拉角、滚转原样恢复。
+- **验收**:滚转态 4K 导出盘面对角滚转(目视)+ 无滚转对照 SHA256 不同;滚转分享码
+  运行时往返与 URL 初始化均逐位一致;默认冻结截图旧码 vs 新码**逐像素 diff=0**;
+  0 错误。详 TESTREPORT §24。
+- **方法论**:①跨页面会话截图哈希再次证实不可比(两次加载 67819500 vs 700e8128,
+  像素 diff 却为 0)——判定渲染影响必须同页面像素 diff 或 stash 三明治;②IAB rAF 挂起是
+  动态的,依赖逐帧推进的测试用 `renderOne()×N` 同步驱动。
 
 ## 13. 八轮(参考配方盘面重写,2026-11-04)
 
