@@ -8,6 +8,7 @@ import { Cinematic, applyPreset, PRESETS } from './cinematic.js';
 import { AmbientAudio } from './audio.js';
 import { Capture } from './capture.js';
 import { Flight } from './flight.js';
+import { TouchSticks } from './joysticks.js';
 import { GeodesicLab } from './geodesic.js';
 import { Annotations } from './annotations.js';
 import { Achievements } from './achievements.js';
@@ -88,6 +89,13 @@ let ui = null;
 
 // ---------------- 互动模块(飞行 / 弹弓 / 标注 / 成就 / 导览) ----------------
 const flight = new Flight(camera, canvas, { onWarn: (m) => ui?.toast(m) });
+// 移动端飞行双摇杆(左=俯仰/滚转,右=进退/偏航):仅触摸设备创建,飞行模式启用
+const sticks = IS_MOBILE ? new TouchSticks({
+  onAxes: (a) => { flight.axes.pitch = a.pitch; flight.axes.roll = a.roll; flight.axes.yaw = a.yaw; flight.axes.thrust = a.thrust; },
+}) : null;
+function updateSticks() {
+  sticks?.setEnabled(IS_MOBILE && state.mode === 'fly' && !plunge.active);
+}
 const geolab = new GeodesicLab(camera);
 const annotations = new Annotations();
 const ach = new Achievements((def) => {
@@ -376,9 +384,11 @@ function setMode(mode, opts = {}) {
     syncFovFromCamera(false);
     persist(state);
   }
+  updateSticks();
   if (opts.silent) return; // 预设切换等场景避免与后续 toast 互相覆盖
   if (mode === 'cine') ui.toast('电影镜头循环 · 拖拽画面接管相机');
-  else if (mode === 'fly') ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视 · 滚轮调速');
+  else if (mode === 'fly') ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视' +
+    (IS_MOBILE ? ' · 双摇杆:左俯仰滚转 / 右进退偏航' : ' · 滚轮调速'));
   else ui.toast('自由轨道 · Space 恢复循环 · G 飞行');
 }
 
@@ -661,6 +671,7 @@ function setPlunge(on, opts = {}) {
     controls.enabled = false; // 脚本运镜期间接管相机,用户输入不抢
     plunge.start();
     ui.setPlungeUI(true);
+    updateSticks();
     if (!opts.silent) ui.toast('坠入之旅 · 开始 — B 或「退出」随时离开');
   } else {
     plunge.stop();
@@ -670,6 +681,7 @@ function setPlunge(on, opts = {}) {
 
 function endPlunge(finished, opts = {}) {
   controls.enabled = true;
+  updateSticks();
   // 坠点(r≈2.05)在轨道相机 minDistance 之内,不能原地交还——回到远景全景
   applyPreset(0, camera, controls);
   syncFovFromCamera();
@@ -854,7 +866,9 @@ if (state.tour) setTour(true);
 if (state.mode === 'fly') {
   controls.enabled = false;
   flight.enter();
-  ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视');
+  updateSticks();
+  ui.toast('自由飞行 · WASD 移动 · R/F 升降 · Q/E 滚转 · 拖拽环视' +
+    (IS_MOBILE ? ' · 双摇杆:左俯仰滚转 / 右进退偏航' : ' · 滚轮调速'));
 }
 // ?plunge=1 直达坠入之旅
 if (state.plunge) setPlunge(true, { silent: true });
@@ -1143,7 +1157,7 @@ if (state.snapName) snapFlow();
 
 // ---------------- 自动化 API ----------------
 window.gargantua = {
-  version: '2.5.5',
+  version: '2.6.0',
   startGuide: () => guide.start(),
   ready: false,
   info() {
@@ -1193,8 +1207,10 @@ window.gargantua = {
   },
   setTour(on) { setTour(!!on); return tour.active; },
   setPlunge(on) { setPlunge(!!on); return plunge.active; },
-  // 测试钩子:跳转到坠入之旅的时间点(秒),下一渲染帧补发错过的字幕
-  _plungeSeek(sec) { plunge._t = Math.max(0, +sec || 0); return +plunge._t.toFixed(2); },
+  // 测试钩子:坠入之旅快进到目标秒(轨道真实积分推进,事件照常触发)
+  _plungeSeek(sec) { return plunge.seek(sec); },
+  // 测试钩子:飞行摇杆轴对象(移动端 TouchSticks 写入同一对象)
+  _flyAxes: () => flight.axes,
   setPhoto(on) { setPhoto(!!on); return state.photo; },
   setGeoArm(on) { setGeoArmed(!!on); return state.geoArmed; },
   launchPhoton(ndcX = 0, ndcY = 0) {

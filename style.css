@@ -387,6 +387,28 @@ select.btn option { background: #111; color: var(--fg); }
 }
 #plunge-fade.on { opacity: 1; }
 
+/* ---------------- 移动端飞行双摇杆 ----------------
+   透明触摸层盖住画布(z 8 < HUD 10,顶栏按钮仍可点):
+   按住哪半边屏幕,底座就浮在哪里;左摇杆俯仰/滚转,右摇杆进退/偏航。 */
+#joysticks { position: fixed; inset: 0; z-index: 8; display: none; touch-action: none; }
+.stick {
+  position: fixed; left: 0; top: 0;
+  width: 112px; height: 112px; margin: -56px 0 0 -56px;
+  display: none; pointer-events: none;
+}
+.stick .stick-base {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, .32);
+  background: rgba(10, 10, 12, .32);
+}
+.stick .stick-knob {
+  position: absolute; left: 50%; top: 50%;
+  width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(255, 179, 71, .82);
+  box-shadow: 0 0 14px rgba(255, 179, 71, .45);
+}
+
 /* ---------------- 成就图鉴 ---------------- */
 #ach {
   position: fixed; top: 0; left: 0; z-index: 20;

@@ -15,6 +15,9 @@ export class Flight {
     this.yaw = 0;
     this.pitch = 0;
     this.roll = 0;
+    // 虚拟摇杆轴(移动端,joysticks.js 写入;[-1,1],松手归零)
+    // 左摇杆: pitch 俯仰 / roll 滚转;右摇杆: thrust 进退 / yaw 偏航
+    this.axes = { pitch: 0, roll: 0, yaw: 0, thrust: 0 };
     this.locked = false;    // 不再使用 pointer lock:拖拽才转视角,鼠标空闲时可点 UI
     this._drag = null;      // 拖拽环视
     this._warned = false;
@@ -94,6 +97,7 @@ export class Flight {
   update(dt, minR) {
     if (!this.active) return this.camera.position.length();
     const K = this.keys;
+    const ax = this.axes;
     // 基础速度随距离增长但封顶(否则远飞时"距离↑→速度↑"正反馈,几帧就冲出上百 M)
     const spd = (5 + 0.3 * Math.min(this.camera.position.length(), 60)) * this.speedMul;
     const q = this.camera.quaternion;
@@ -107,13 +111,25 @@ export class Flight {
     if (K.has('KeyR')) acc.y += 1;
     if (K.has('KeyF')) acc.y -= 1;
     if (acc.lengthSq() > 0) acc.normalize().multiplyScalar(spd * 6.5);
-    // Q/E 滚转(按角速度积分,与帧率无关;环绕 ±π)
-    if (K.has('KeyQ')) this.roll += 1.5 * dt;
-    if (K.has('KeyE')) this.roll -= 1.5 * dt;
+    // 右摇杆推力(模拟量 0..1,沿视线):与键盘叠加,封顶 1.5× 键盘速度
+    if (ax.thrust) {
+      acc.addScaledVector(this._fwd, ax.thrust * spd * 6.5);
+      const over = acc.length() / (spd * 6.5 * 1.5);
+      if (over > 1) acc.multiplyScalar(1 / over);
+    }
+    // Q/E 滚转(按角速度积分,与帧率无关;环绕 ±π)+ 左摇杆滚转轴
+    let rollRate = 0;
+    if (K.has('KeyQ')) rollRate += 1.5;
+    if (K.has('KeyE')) rollRate -= 1.5;
+    rollRate += ax.roll * 1.8;
+    if (rollRate) this.roll += rollRate * dt;
     if (Math.abs(this.roll) > Math.PI) {
       const TAU = Math.PI * 2;
       this.roll = ((this.roll + Math.PI) % TAU + TAU) % TAU - Math.PI;
     }
+    // 左摇杆俯仰 / 右摇杆偏航(角速度积分,与 Q/E 同框架)
+    if (ax.pitch) this.pitch = Math.min(1.45, Math.max(-1.45, this.pitch + ax.pitch * 1.4 * dt));
+    if (ax.yaw) this.yaw += ax.yaw * 1.1 * dt;
     // 固定子步积分(≤1/60s):帧率无关;主循环卡顿时 dt 可达 0.1s,
     // 单步积分会削阻尼+放大位移导致"瞬移",子步后速度/位移与真实时间一致
     const steps = Math.max(1, Math.min(6, Math.ceil(dt / (1 / 60))));
